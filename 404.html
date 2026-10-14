@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8" /><title>sheetaet</title>
+<!-- SPA-фолбэк для GitHub Pages: любой адрес вида /sut-media/projects/… открывает приложение и восстанавливает путь -->
+<script>
+  (function () {
+    var base = location.pathname.indexOf("/sheetaet/") === 0 ? "/sheetaet" : "";
+    try { sessionStorage.setItem("sheetaet_redirect", location.pathname + location.search + location.hash); } catch (e) {}
+    location.replace(base + "/");
+  })();
+</script>
+<style>html,body{background:#000;margin:0}</style>
+</head><body></body></html>

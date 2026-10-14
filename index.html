@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<title>sheetaet</title>
+<meta name="description" content="sheetaet — финансовый учёт небольшой фирмы" />
+<!-- База путей: на github.io приложение живёт под /sheetaet/, на своём домене — в корне. Все относительные ссылки — от неё. -->
+<script>(function () { var b = location.pathname.indexOf("/sheetaet/") === 0 || location.pathname === "/sheetaet" ? "/sheetaet/" : "/"; document.write('<base href="' + b + '">'); try { var t = localStorage.getItem("sheetaet_theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {} })();</script>
+<meta name="theme-color" content="#000000" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="sheetaet" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" type="image/svg+xml" href="icons/rose.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css?v=1" />
+<link rel="stylesheet" href="sheetaet.css?v=1" />
+</head>
+<body>
+
+<!-- ВХОД: шаг 1 — организация, шаг 2 — личный -->
+<div id="auth" class="auth" hidden>
+  <div class="auth-top">
+    <div class="brand brand--big"><span class="logo" aria-hidden="true"></span><span class="wordmark">sheetaet</span></div>
+    <p id="auth-org-name" class="auth-tagline"></p>
+    <form id="gate-form" class="auth-form" autocomplete="off" hidden>
+      <input id="gate-slug" class="field" type="text" placeholder="организация" autocapitalize="off" autocorrect="off" spellcheck="false" />
+      <input id="gate-pass" class="field" type="password" placeholder="пароль организации" autocomplete="off" />
+      <button class="btn btn--solid" type="submit">Войти в организацию</button>
+    </form>
+    <form id="login-form" class="auth-form" autocomplete="on" hidden>
+      <input id="login-email" class="field" type="email" placeholder="e-mail" autocomplete="email" />
+      <input id="login-pass" class="field" type="password" placeholder="пароль" autocomplete="current-password" />
+      <button class="btn btn--solid" type="submit">Войти</button>
+      <button id="login-forgot" class="auth-forgot" type="button">Забыли пароль?</button>
+    </form>
+    <p id="auth-msg" class="auth-msg"></p>
+  </div>
+  <div class="auth-bottom"><p class="auth-hint">sheetaet — деньги небольшой фирмы</p></div>
+</div>
+
+<!-- ПРИЛОЖЕНИЕ -->
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <button id="brand-home" class="brand brand-btn" type="button" aria-label="Главная"><span class="logo" aria-hidden="true"></span><span class="wordmark">sheetaet</span></button>
+    <div class="topbar-actions">
+      <button id="theme-btn" class="icon-btn" title="Тема" aria-label="Сменить тему">◐</button>
+      <button id="org-btn" class="icon-btn" title="Организация" aria-label="Организация">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="7" width="17" height="12.5" rx="2.5"/><path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7"/><path d="M3.5 12.5h17"/></svg>
+      </button>
+    </div>
+  </header>
+  <div class="subhead">
+    <button id="back-btn" class="back-btn" type="button" aria-label="Назад" hidden>‹</button>
+    <div id="page-title" class="page-title"></div>
+  </div>
+  <main class="main" id="main"></main>
+  <nav id="page-nav" class="page-nav">
+    <button class="nav-item" data-go="" type="button" aria-label="Главная"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5V11M10 19.5V5M16 19.5v-6M20.5 19.5h-17"/></svg></span></button>
+    <button class="nav-item" data-go="projects" type="button" aria-label="Проекты"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 8a2 2 0 0 1 2-2h3l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M6 15h6"/></svg></span></button>
+    <button class="nav-item" data-go="team" type="button" aria-label="Сотрудники"><span class="nav-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c0-3.2 2.5-5.3 5.5-5.3s5.5 2.1 5.5 5.3"/><path d="M15.5 5.8a3 3 0 0 1 0 5.4M17.5 13.9c1.8.6 3 2.4 3 5.1"/></svg></span></button>
+  </nav>
+  <button id="fab" class="fab" type="button" aria-label="Создать" hidden>+</button>
+</div>
+
+<div id="modals"></div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="config.js?v=1"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="core.js?v=1"></script>
+<script src="charts.js?v=1"></script>
+<script src="sortable.js?v=1"></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>

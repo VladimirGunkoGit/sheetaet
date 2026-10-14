@@ -416,3 +416,9 @@
 /* v3.1: разделители разделов проекта — цветные, высотой с плашку */
 .ent-head{ background:rgba(var(--c), .14); padding:0 10px 0 0; border-radius:5px; }
 .ent-head .k-pill{ background:rgba(var(--c), .3); }
+/* v3.2: закреплённая колонка годовой таблицы — всегда непрозрачная, без тени.
+   Подсветка строки (наведение, итоги) рисуется слоем поверх цвета фона, поэтому цифры под ней не просвечивают. */
+.yt .yt-l, [data-theme] .yt .yt-l{ background:var(--bg); box-shadow:none; z-index:3; }
+.yt tr[data-open]:hover .yt-l,
+.yt tr.is-sum .yt-l, .yt tr.yt-total .yt-l,
+[data-theme] .yt tr.is-sum .yt-l, [data-theme] .yt tr.yt-total .yt-l{ background:linear-gradient(var(--inactive-bg), var(--inactive-bg)), var(--bg); }

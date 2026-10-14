@@ -327,3 +327,89 @@
   .emp-sum{ min-width:0; }
   .yt .yt-l{ min-width:128px; max-width:150px; }
 }
+
+/* ================= ПРАВКИ v3 ================= */
+/* 1. переключатель «главные цифры / таблица» — иконки справа от заголовка */
+.page-tools{ display:inline-flex; gap:6px; margin-left:auto; align-self:center; }
+.page-tools:empty{ display:none; }
+.page-tools .view-btn{ width:32px; height:32px; border-radius:8px; }
+.page-tools .view-btn svg{ width:17px; height:17px; }
+.sh-tabs{ display:none; }
+
+/* 3. кольца крупнее */
+.ch-svg{ width:min(300px, 82vw); height:min(300px, 82vw); }
+.ch-c-val{ font-size:14px; } .ch-c-label{ font-size:9.5px; }
+
+/* 4. дата «сегодня» — строго по центру названия месяца */
+.mbar-center{ align-items:center; }
+.money-monthbar .money-month-title{ line-height:1; display:inline-flex; align-items:center; }
+.mbar-center .mbar-today{ line-height:1; position:relative; top:2px; }
+
+/* 5. годовая таблица: одинаковые колонки, разделы — линии на всю ширину, пустые ячейки пустые */
+.yt{ table-layout:fixed; min-width:0; width:100%; border-spacing:0; }
+.yt col.yt-c-l{ width:220px; }
+.yt col.yt-c-m{ width:auto; }
+.yt col.yt-c-t{ width:104px; }
+.yt td, .yt th{ height:32px; padding-top:0; padding-bottom:0; overflow:hidden; text-overflow:ellipsis; vertical-align:middle; }
+.yt tr + tr td{ border-top:2px solid transparent; background-clip:padding-box; }
+.yt .yt-l{ background:var(--bg); box-shadow:6px 0 6px -6px rgba(0,0,0,.45); }
+[data-theme="light"] .yt .yt-l{ box-shadow:6px 0 6px -6px rgba(0,0,0,.18); }
+.yt tr.yt-sec td{ height:auto; padding:16px 0 6px; border-bottom:1px solid rgba(var(--c), .6); background:transparent; }
+.yt tr.yt-sec td.yt-l{ background:var(--bg); padding-left:0; }
+.yt-wrap{ overflow-x:auto; }
+.yt-wrap .yt{ min-width:980px; }
+@media (max-width:767px){ .yt col.yt-c-l{ width:136px; } .yt col.yt-c-t{ width:84px; } .yt-wrap .yt{ min-width:900px; } }
+@media (min-width:860px){ .yt col.yt-c-l{ width:240px; } .yt col.yt-c-t{ width:120px; } .yt td, .yt th{ height:35px; } }
+
+/* 8. даты в шапке карточек — как остальные плашки */
+.sh-meta .meta-pill, .sh-meta .status-pill{ font-size:var(--fs-body); }
+.sh-meta .meta-cap{ font-size:11px; }
+@media (min-width:860px){ .sh-meta .meta-cap{ font-size:12px; } }
+
+/* 9. архив в карточке организации */
+.org-arch{ display:flex; flex-direction:column; gap:2px; margin-top:8px; }
+.org-arch-row{ display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:10px; padding:4px 2px; }
+.org-arch-name{ border:none; background:transparent; color:var(--fg); text-align:left; font-size:var(--fs-body); padding:6px 0; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.org-arch-row .chip{ padding:4px 10px; font-size:12px; }
+
+/* 10–12. сотрудники: без шапки и фильтров; на телефоне без проектов */
+.emp-head, .sh-sort{ display:none !important; }
+.emp-more{ width:auto !important; padding:0 7px !important; font-size:11px; white-space:nowrap; }
+@media (max-width:767px){
+  .emp .swipe-row.emp-row{ grid-template-columns:minmax(0,1fr) auto 86px; gap:10px; }
+  .emp-projs{ display:none; }
+  .emp-name{ white-space:normal; line-height:1.3; font-size:14px; }
+}
+.emp-sum{ min-width:0; }
+
+/* 13. карточка сотрудника: проекты = строки выплат */
+.emp-month{ margin:4px 0 6px; }
+.emp-pays{ display:flex; flex-direction:column; gap:2px; }
+.emp-pay-row .swipe-row.emp-pay{ display:grid; grid-template-columns:minmax(0,1fr) 76px 110px; align-items:center; gap:10px; padding:7px 2px; min-height:40px; cursor:pointer; border-radius:5px; font-size:var(--fs-body); }
+.emp-pay-row .swipe-row.emp-pay:hover{ background:var(--inactive-bg); }
+.emp-pay-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.emp-pay-date{ text-align:center; }
+.emp-pay-sum{ text-align:right; font-variant-numeric:tabular-nums; }
+
+/* 14. месячная таблица главной: значения не наезжают на названия */
+.dt-row{ display:grid; grid-template-columns:minmax(0,1fr) auto; }
+.dt-l{ min-width:0; }
+.dt-sec{ background:transparent; padding:0; margin:18px 0 6px; border-bottom:1px solid rgba(var(--c), .6); padding-bottom:6px; }
+.dt-sec .k-pill{ font-size:11px; text-transform:none; letter-spacing:0; }
+
+@media (min-width:860px){
+  .page-tools .view-btn{ width:35px; height:35px; border-radius:9px; }
+  .page-tools .view-btn svg{ width:18.5px; height:18.5px; }
+  .ch-svg{ width:396px; height:396px; }
+  .ch-c-val{ font-size:15.5px; } .ch-c-label{ font-size:10.5px; }
+  .emp-pay-row .swipe-row.emp-pay{ grid-template-columns:minmax(0,1fr) 84px 121px; font-size:var(--fs-body); }
+  .org-arch-row .chip{ font-size:13px; }
+}
+/* ширина месяца — по самому длинному числу (1 234 567), одинаковая для всех 12 колонок */
+.yt col.yt-c-m{ width:78px; }
+.yt-wrap .yt{ width:max(100%, 1300px); min-width:0; }
+@media (max-width:767px){ .yt col.yt-c-m{ width:76px; } .yt-wrap .yt{ width:1132px; } }
+@media (min-width:860px){ .yt col.yt-c-m{ width:auto; } .yt-wrap .yt{ width:max(100%, 1368px); } }
+/* дата «сегодня» — по центру строчных букв названия месяца */
+.mbar-center .mbar-today{ top:0; transform:translateY(7px); }
+@media (max-width:420px){ .mbar-center .mbar-today{ transform:translateY(5px); } }

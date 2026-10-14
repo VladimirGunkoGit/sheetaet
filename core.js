@@ -121,6 +121,16 @@
     }
     return out;
   }
+  /* ---------- год: 12 колонок ---------- */
+  const MONTHS_COL = ["ЯНВ","ФЕВ","МАР","АПР","МАЙ","ИЮН","ИЮЛ","АВГ","СЕН","ОКТ","НОЯ","ДЕК"];
+  const monthsOfYear = (year) => Array.from({ length: 12 }, (_, i) => `${year}-${pad(i + 1)}`);
+  // ряд из 12 значений + итог (итог — сумма копеек, не округлённых ячеек)
+  function yearRow(year, fn) { const values = monthsOfYear(year).map(fn); return { values, total: values.reduce((s, v) => s + v, 0) }; }
+  // ячейка годовой таблицы: целые рубли, без «₽»; ноль — «—»
+  function formatCell(minor) { const r = Math.round((Number(minor) || 0) / 100); if (!r) return "—"; return (r < 0 ? MINUS : "") + groupInt(Math.abs(r)); }
+  const orgYear = (projects, entries, year, org) => monthsOfYear(year).map((k) => orgMonth(projects, entries, k, org));
+  const projectYear = (project, entries, year, org) => monthsOfYear(year).map((k) => projectMonth(project, entries, k, org));
+
   // «Имя Фамилия» → части
   function splitName(full) { const w = String(full || "").trim().split(/\s+/).filter(Boolean); return { first_name: w[0] || "", last_name: w.slice(1).join(" ") }; }
   const fullName = (e) => [e.first_name, e.last_name].filter(Boolean).join(" ").trim();
@@ -131,6 +141,7 @@
     daysInMonth, monthKey, monthStart, addMonths, inMonth, dayInMonth, todayStr,
     MONTHS, MONTHS_GEN, MONTHS_SHORT, monthLabel, monthPrep, dayLabel, dayLong, plural,
     projectMonth, orgMonth, employeeMonth, compare, copyPlan, splitName, fullName,
+    MONTHS_COL, monthsOfYear, yearRow, formatCell, orgYear, projectYear,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api; else root.SheetCore = api;
 })(typeof window !== "undefined" ? window : globalThis);

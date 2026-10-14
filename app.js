@@ -606,7 +606,7 @@
       <button class="ent-del" data-del aria-label="${e._virtual && e.kind === "salary" ? "Убрать из проекта" : "Удалить строку"}">${TRASH}</button></div></div>`;
   }
   function entrySection(kind, list, addLabel) {
-    return `<div class="ent-sec" data-kind="${kind}"><div class="ent-head">${kindPill(kind === "org_expense" ? "fixed" : kind)}<span class="ent-sum">${fm(list.reduce((s, e) => s + (e.amount_minor || 0), 0))}</span></div>
+    return `<div class="ent-sec" data-kind="${kind}"><div class="ent-head" style="--c:${K[kind === "org_expense" ? "fixed" : kind]}">${kindPill(kind === "org_expense" ? "fixed" : kind)}<span class="ent-sum">${fm(list.reduce((s, e) => s + (e.amount_minor || 0), 0))}</span></div>
       ${list.map((e) => entryRow(e)).join("")}<button class="proj-add-task ent-add" data-add="${kind}">+ ${addLabel}</button></div>`;
   }
   const entriesFor = (pid, kind) => S.entries.filter((e) => e.project_id === pid && e.kind === kind && C.inMonth(e.date, S.month)).sort((a, b) => a.date.localeCompare(b.date) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
@@ -700,7 +700,7 @@
       <div class="ent-gap"></div>
       ${entrySection("salary", projectMonthRows(p, "salary"), "выплата")}
       ${entrySection("expense", projectMonthRows(p, "expense"), "расход")}
-      <div class="ent-sec ent-sec--auto"><div class="ent-head">${kindPill("tax")}<span class="ent-sum">${fm(m.tax)}</span></div><div class="ent-auto"><span>7% от дохода ${fmt(m.income)}</span></div></div>
+      <div class="ent-sec ent-sec--auto"><div class="ent-head" style="--c:${K.tax}">${kindPill("tax")}<span class="ent-sum">${fm(m.tax)}</span></div><div class="ent-auto"><span>7% от дохода ${fmt(m.income)}</span></div></div>
       <div class="ent-total"><span>итого расходов</span><span>${fm(m.total)}</span></div>
       <div class="ent-profit"><div class="ent-profit-top">${kindPill("profit")}<span class="ent-profit-num ${m.profit < 0 ? "is-neg" : ""}">${fm(m.profit)}</span></div>
         <div class="ent-profit-sub">маржа ${String(m.margin).replace(".", ",")}% · цель <button class="ent-rate" data-rate>${String(m.rate).replace(".", ",")}%</button>: ${fmt(m.target)} · <span class="${m.vsTarget >= 0 ? "is-good" : "is-neg"}">${m.vsTarget >= 0 ? "выше цели на " + fmt(m.vsTarget) : "ниже на " + fmt(-m.vsTarget)}</span></div></div>

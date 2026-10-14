@@ -413,3 +413,6 @@
 /* дата «сегодня» — по центру строчных букв названия месяца */
 .mbar-center .mbar-today{ top:0; transform:translateY(7px); }
 @media (max-width:420px){ .mbar-center .mbar-today{ transform:translateY(5px); } }
+/* v3.1: разделители разделов проекта — цветные, высотой с плашку */
+.ent-head{ background:rgba(var(--c), .14); padding:0 10px 0 0; border-radius:5px; }
+.ent-head .k-pill{ background:rgba(var(--c), .3); }

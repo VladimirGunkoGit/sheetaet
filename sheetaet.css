@@ -586,3 +586,25 @@
 .emp-total{ background:transparent; border-radius:0; border-top:1px solid var(--rule-sec); margin-top:12px; padding:12px 10px; font-weight:600; color:var(--fg); }
 @media (min-width:860px){ .dt-row, .dt-row.is-sum, .dt-total{ padding:7.5px 11px; } .ent-profit-num{ font-size:var(--fs-body); } }
 .yt--head th, .yt--head th.yt-l{ border-bottom:1px solid var(--rule); }
+
+/* ================= ПРАВКИ v6 ================= */
+/* линия над первым разделом — такая же тонкая, как остальные строки */
+.yt tbody tr.yt-sec:first-child td, [data-theme] .yt tbody tr.yt-sec:first-child td, .yt tbody tr.yt-sec:first-child td.yt-l{ border-top:0; padding-top:10px; }
+
+/* крохотная полупрозрачная стрелка у плашки раздела: складывает раздел до заголовка */
+.sec-fold{ display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; margin:0 4px 0 -2px; padding:0; border:none; background:transparent; color:var(--fg); opacity:.35; cursor:pointer; vertical-align:middle; transition:opacity .15s, transform .18s ease; }
+.sec-fold:hover{ opacity:.8; }
+.is-folded > * > .sec-fold, .dt-sec.is-folded > .sec-fold{ transform:rotate(-90deg); }
+.dt-sec.ent-head{ justify-content:flex-start; }
+.is-folded-row{ display:none !important; }
+@media (prefers-reduced-motion:reduce){ .sec-fold{ transition:none; } }
+
+/* «чистая прибыль» — тонкая фиолетовая строка */
+.yt tr.yt-total td, .yt tr.yt-total td.yt-l, [data-theme] .yt tr.yt-total td, [data-theme] .yt tr.yt-total .yt-l{
+  background:linear-gradient(rgba(178,150,232,.16), rgba(178,150,232,.16)), var(--bg); height:30px; border-bottom:0; }
+.yt tr.yt-total td:first-child{ border-radius:5px 0 0 5px; } .yt tr.yt-total td:last-child{ border-radius:0 5px 5px 0; }
+[data-theme] .yt tbody tr.yt-total td, .yt tbody tr.yt-total td{ border-top:10px solid transparent; background-clip:padding-box; }
+.yt tbody tr:has(+ tr.yt-total) td{ border-bottom-color:transparent; }
+.dt-total, .dt-row.dt-total{ background:rgba(178,150,232,.16); border-radius:5px; border-bottom:0; padding-top:5px; padding-bottom:5px; margin-top:10px; }
+.dt-row:has(+ .dt-total){ border-bottom-color:transparent; }
+[data-theme] .yt tbody tr.yt-total td.yt-l, .yt tbody tr.yt-total td.yt-l{ background-clip:padding-box; }

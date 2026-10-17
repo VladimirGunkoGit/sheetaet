@@ -435,6 +435,21 @@
   const periodHead = (place, mode) => `<div class="sh-month">${monthBar(mode)}${place ? viewToggle(place) : ""}</div>`;
   function wireViewToggle(root, rerender) { $$(".view-toggle [data-view]", root).forEach((b) => (b.onclick = () => { localStorage.setItem("sheetaet_view_" + b.parentElement.dataset.place, b.dataset.view); rerender(); })); }
 
+  /* ---------- сворачивание разделов: крохотная стрелка у плашки; раздел складывается до заголовка ---------- */
+  const FOLD_KEY = "sheetaet_fold";
+  const folded = () => { try { return new Set(JSON.parse(localStorage.getItem(FOLD_KEY) || "[]")); } catch (e) { return new Set(); } };
+  const foldId = (sec) => (S.page || "dash") + ":" + sec;
+  const foldBtn = (sec) => `<button class="sec-fold" data-fold="${sec}" aria-label="Свернуть или развернуть раздел"><svg viewBox="0 0 10 10" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3.5l3 3 3-3"/></svg></button>`;
+  function wireFold(root) {
+    $$("[data-fold]", root).forEach((b) => (b.onclick = (e) => {
+      e.stopPropagation();
+      const sec = b.dataset.fold, f = folded(), id = foldId(sec), on = !f.has(id);
+      on ? f.add(id) : f.delete(id); try { localStorage.setItem(FOLD_KEY, JSON.stringify([...f])); } catch (er) {}
+      $$(`[data-in="${sec}"]`, root).forEach((r) => r.classList.toggle("is-folded-row", on));
+      $$(`[data-fold="${sec}"]`, root).forEach((x) => x.closest(".yt-sec, .dt-sec").classList.toggle("is-folded", on));
+    }));
+  }
+
   /* ---------- годовая таблица: 12 одинаковых колонок + ИТОГО ---------- */
   // rows: {label, values[12], total, cls, open, page, pct} | {sec: kindKey, label}
   function yearGrid(rows) {
@@ -445,11 +460,14 @@
     const head = `<thead><tr><th class="yt-l"></th>${C.MONTHS_COL.map((m, i) => `<th class="yt-m${cur(i)}" data-month="${keys[i]}" title="открыть месяц">${m}</th>`).join("")}<th class="yt-t">ИТОГО</th></tr></thead>`;
     const cell = (r, v) => (r.pct ? (v == null ? "" : String(v).replace(".", ",") + "%") : v ? C.formatCell(v) : "");
     const neg = (r, v) => (!r.pct && v < 0 ? " is-neg" : "");
+    const fs = folded(); let inSec = null;
     const body = rows.map((r) => {
+      if (r.sec) inSec = r.sec; else if (r.cls === "yt-total") inSec = null;
+      const fold = !r.sec && inSec ? ` data-in="${inSec}"` + (fs.has(foldId(inSec)) ? ` data-folded="1"` : "") : "";
       // раздел — широкая цветная полоса во всю строку (как в карточке проекта), по ячейке на месяц, чтобы текущий месяц не терялся
-      if (r.sec) return `<tr class="yt-sec" style="--c:${K[r.sec]}"><td class="yt-l"><span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span></td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}<td class="yt-t"></td></tr>`;
+      if (r.sec) return `<tr class="yt-sec${fs.has(foldId(r.sec)) ? " is-folded" : ""}" style="--c:${K[r.sec]}"><td class="yt-l">${foldBtn(r.sec)}<span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span></td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}<td class="yt-t"></td></tr>`;
       const ed = r.edit ? ` data-edit="${esc(JSON.stringify(r.edit))}"` : "";
-      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}" ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${cur(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}>${cell(r, v)}</td>`).join("")}<td class="yt-t${neg(r, r.total)}">${cell(r, r.total)}</td></tr>`;
+      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${cur(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}>${cell(r, v)}</td>`).join("")}<td class="yt-t${neg(r, r.total)}">${cell(r, r.total)}</td></tr>`;
     }).join("");
     return `<div class="yt-block"><div class="yt-head"><table class="yt yt--head">${cols}${head}</table></div><div class="yt-wrap"><table class="yt">${cols}<tbody>${body}</tbody></table></div></div>`;
   }
@@ -458,6 +476,7 @@
     // строка со значениями, которые можно править: нажатие на сумму меняет сумму, на название — открывает карточку
     $$(".yt tr[data-open]", root).forEach((tr) => (tr.onclick = (e) => { if (tr.dataset.edit && !e.target.closest(".yt-l")) return; go(tr.dataset.page, tr.dataset.open); }));
     $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, rerender || (() => render()))));
+    wireFold(root);
     $$(".yt-block", root).forEach((b) => {
       const head = $(".yt-head", b), wrap = $(".yt-wrap", b);
       // закрепить вплотную к верху области прокрутки (минус её внутренний отступ), чтобы над строкой месяцев ничего не просвечивало
@@ -558,7 +577,7 @@
     wireMonthBar(main); wireViewToggle(main, () => renderDashboard(main));
     const body = $("#dash-body", main);
     if (S.dashTab === "table" && yearMode) { body.innerHTML = yearGrid(dashYearRows()); wireYearGrid(body, "dash"); return; }
-    if (S.dashTab === "table") { body.innerHTML = dashTable(cur); $$("[data-open]", body).forEach((r) => (r.onclick = () => go(r.dataset.page, r.dataset.open))); return; }
+    if (S.dashTab === "table") { body.innerHTML = dashTable(cur); $$("[data-open]", body).forEach((r) => (r.onclick = () => go(r.dataset.page, r.dataset.open))); wireFold(body); return; }
     const prevName = C.monthPrep(prevKey);
     const tiles = [
       ["прибыль всего", cur.profit, prev.profit, "up-good", "profit"], ["доход всего", cur.income, prev.income, "up-good", "income"],
@@ -582,8 +601,9 @@
   // Месячная таблица: все проекты и люди на месте; пустые значения — пусто
   function dashTable(o) {
     const per = periodOf("month");
-    const row = (label, v, opts) => { opts = opts || {}; const sum = /is-sum/.test(opts.cls || ""); return `<div class="dt-row ${opts.cls || ""}" ${opts.open ? `data-open="${opts.open}" data-page="${opts.page}"` : ""}><span class="dt-l">${label}</span><span class="dt-v ${v < 0 ? "is-neg" : ""}">${sum ? fm(v) : fmz(v)}</span></div>`; };
-    const sec = (k, title) => `<div class="ent-head dt-sec" style="--c:${K[k]}"><span class="k-pill" style="--c:${K[k]}">${title}</span></div>`;
+    const fs = folded(); let inSec = null;
+    const row = (label, v, opts) => { opts = opts || {}; const sum = /is-sum/.test(opts.cls || ""); const f = inSec && fs.has(foldId(inSec)); return `<div class="dt-row ${opts.cls || ""}${f ? " is-folded-row" : ""}"${inSec ? ` data-in="${inSec}"` : ""} ${opts.open ? `data-open="${opts.open}" data-page="${opts.page}"` : ""}><span class="dt-l">${label}</span><span class="dt-v ${v < 0 ? "is-neg" : ""}">${sum ? fm(v) : fmz(v)}</span></div>`; };
+    const sec = (k, title) => { inSec = k; return `<div class="ent-head dt-sec${fs.has(foldId(k)) ? " is-folded" : ""}" style="--c:${K[k]}">${foldBtn(k)}<span class="k-pill" style="--c:${K[k]}">${title}</span></div>`; };
     const byId = {}; o.per.forEach((x) => (byId[x.project.id] = x));
     const projs = listProjects(per);
     const people = listPeople(per);
@@ -591,11 +611,12 @@
     const open = (p) => ({ open: p.id, page: "projects" });
     let h = `<div class="dash-table">`;
     h += sec("income", "поступления") + projs.map((p) => row(pl(p), (byId[p.id] || {}).income || 0, open(p))).join("") + row("выручка до налогов", o.income, { cls: "is-sum" });
-    h += sec("tax", "налоги") + row(`налоги · ${taxPct()} от выручки`, o.tax, { cls: "is-sum" }) + row("выручка после налогов", o.income - o.tax, { cls: "is-sum" });
+    h += sec("tax", "налоги") + row(`налоги · ${taxPct()} от выручки`, o.tax, { cls: "is-sum" });
     h += sec("salary", "зарплаты") + people.map((e) => row(esc(C.fullName(e) || "без имени"), C.employeeMonth(e.id, S.entries, S.month).total, { open: e.id, page: "team" })).join("") + row("зарплаты всего", o.salaries, { cls: "is-sum" });
     h += sec("expense", "прочие расходы проектов") + projs.map((p) => row(pl(p), (byId[p.id] || {}).other || 0, open(p))).join("") + row("итого", o.projOther, { cls: "is-sum" });
     h += sec("profit", "прибыль по проектам") + projs.map((p) => row(pl(p), (byId[p.id] || {}).profit || 0, open(p))).join("") + row("итого по проектам", o.projectsProfit, { cls: "is-sum" });
     h += sec("fixed", "постоянные расходы") + fixedTitles().map((t) => row(esc(t), sumBy(fx.filter((e) => (e.title || "расход").trim() === t)))).join("") + row("итого", o.fixed, { cls: "is-sum" });
+    inSec = null;
     h += `<div class="dt-row dt-total"><span class="dt-l">чистая прибыль</span><span class="dt-v ${o.profit < 0 ? "is-neg" : ""}">${fm(o.profit)}</span></div>`;
     return h + `</div>`;
   }
@@ -609,7 +630,6 @@
     rows.push({ sec: "income", label: "поступления" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "income"), open(p))));
     rows.push(yRow("выручка до налогов", sumOrg("income"), { cls: "is-sum" }));
     rows.push({ sec: "tax", label: "налоги" }); rows.push(yRow(`налоги · ${taxPct()} от выручки`, sumOrg("tax"), { cls: "is-sum" }));
-    rows.push(yRow("выручка после налогов", org.map((m) => m.income - m.tax), { cls: "is-sum" }));
     rows.push({ sec: "salary", label: "зарплаты" });
     listPeople(per).forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => C.employeeMonth(e.id, S.entries, k).total), { open: e.id, page: "team" })));
     rows.push(yRow("зарплаты всего", sumOrg("salaries"), { cls: "is-sum" }));

@@ -479,10 +479,11 @@
   }
   async function refreshNotifyButtons() {
     const on = !DEMO && !!(await pushSub()) && Notification.permission === "granted";
-    $("#push-btn").textContent = on ? "Уведомления на устройстве: вкл · выключить" : "Включить уведомления на этом устройстве";
+    // колокольчик + действие: включены — «Выключить уведомления», выключены — «Включить уведомления»
+    $("#push-btn").innerHTML = `${on ? R_ICON.bellOff : R_ICON.bell}<span>${on ? "Выключить уведомления" : "Включить уведомления"}</span>`;
     $("#push-btn").dataset.on = on ? "1" : "";
     $("#tg-btn").textContent = S.org && S.org.tg_chat_id ? "Телеграм подключён ✓" : "Подключить Телеграм";
-    $("#test-btn").hidden = !(on || (S.org && S.org.tg_chat_id));
+
   }
   $("#push-btn").addEventListener("click", async () => { try { $("#push-btn").dataset.on ? await disablePush() : await enablePush(); } catch (e) { toast("не получилось: " + e.message); } refreshNotifyButtons(); });
   $("#tg-btn").addEventListener("click", async () => {
@@ -494,7 +495,6 @@
       window.open(r.url, "_blank");
     } catch (e) { toast("не получилось: " + e.message); }
   });
-  $("#test-btn").addEventListener("click", async () => { try { const r = await fnCall({ action: "test" }); toast(r.ok ? `отправлено: пуш ${(r.push || []).filter((x) => x >= 200 && x < 300).length}, телеграм ${r.telegram ? "да" : "нет"}` : "не получилось"); } catch (e) { toast("не получилось: " + e.message); } });
 
   // личный кабинет — как в Gunco: кнопка-человечек справа вверху, всплывающее окно с почтой и «Выйти»
   $("#account-btn").addEventListener("click", () => {

@@ -790,3 +790,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 .meta-bell{ display:inline-flex; align-items:center; padding-left:9px; padding-right:9px; }
 .meta-bell svg{ display:block; }
 .meta-bell.is-off{ color:var(--muted); }
+/* личный кабинет: кнопка уведомлений — колокольчик + действие */
+#push-btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; }
+#push-btn svg{ flex:none; width:16px; height:16px; }

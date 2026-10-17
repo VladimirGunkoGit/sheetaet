@@ -478,7 +478,9 @@
     $$(".yt [data-month]", root).forEach((th) => (th.onclick = () => { localStorage.setItem("sheetaet_view_" + place, "month"); setMonth(th.dataset.month); }));
     // строка со значениями, которые можно править: нажатие на сумму меняет сумму, на название — открывает карточку
     $$(".yt tr[data-open]", root).forEach((tr) => (tr.onclick = (e) => { if (tr.dataset.edit && !e.target.closest(".yt-l")) return; go(tr.dataset.page, tr.dataset.open); }));
-    $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, rerender || (() => render()))));
+    // после правки таблица перерисовывается — прокрутку вбок сохраняем, чтобы не прыгать к январю
+    const redraw = () => { const w = $(".yt-wrap", root), sl = w ? w.scrollLeft : 0; (rerender || (() => render()))(); const w2 = $(".yt-wrap", root), h2 = $(".yt-head", root); if (w2) w2.scrollLeft = sl; if (h2 && w2) h2.scrollLeft = w2.scrollLeft; };
+    $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, redraw, td)));
     wireFold(root);
     $$(".yt-block", root).forEach((b) => {
       const head = $(".yt-head", b), wrap = $(".yt-wrap", b);
@@ -489,32 +491,43 @@
     });
   }
 
-  // правка одной ячейки годовой таблицы (проект или сотрудник): ровно эта сумма за этот месяц
-  async function editYearCell(spec, key, after) {
+  // правка одной ячейки годовой таблицы (проект, сотрудник, организация): прямо в ячейке, без окна —
+  // Enter или клик мимо сохраняет, Esc отменяет; пусто — сумма убирается
+  function editYearCell(spec, key, after, td) {
     const match = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && C.inMonth(e.date, key)
       && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? true : (e.title || "расход").trim() === spec.title);
     const list = S.entries.filter(match);
-    if (list.length > 1) { toast(`в ${C.monthPrep(key)} здесь ${list.length} записи — открываю месяц`); localStorage.setItem("sheetaet_view_" + (S.page === "team" ? "employee" : "project"), "month"); setMonth(key); return; }
+    if (list.length > 1) { toast(`в ${C.monthPrep(key)} здесь ${list.length} записи — открываю месяц`); localStorage.setItem("sheetaet_view_" + (S.page === "team" ? "employee" : S.page === "org" ? "org" : "project"), "month"); setMonth(key); return; }
+    if (!td || td.querySelector("input")) return;
     const cur = list[0], p = projById(spec.project_id), emp = spec.employee_id ? empById(spec.employee_id) : null;
-    const what = spec.kind === "salary" ? C.fullName(emp) || "выплата" : spec.kind === "income" ? "поступление" : spec.title;
-    const v = await inputBox({ title: what, sub: `${p ? (p.emoji || "📁") + " " + (p.name || "") + " · " : ""}${C.monthLabel(key)}. пусто — убрать сумму`, value: cur ? C.amountToInput(cur.amount_minor) : "", money: true, okLabel: "Сохранить" });
-    if (v === null) return;
-    const a = v.trim() === "" ? 0 : C.parseAmount(v);
-    if (a == null || a < 0) return toast("не похоже на сумму");
-    if (cur && !a) {
-      await safe(() => DB.remove("entries", cur.id)); S.entries = S.entries.filter((x) => x !== cur);
-      pushUndo("удаление суммы", async () => { const { id, created_at, updated_at, ...rest } = cur; const r = await DB.insert("entries", rest); S.entries.push(r); });
-    } else if (cur) {
-      const prev = cur.amount_minor; cur.amount_minor = a; await safe(() => DB.update("entries", cur.id, { amount_minor: a }));
-      pushUndo("изменение суммы", () => DB.update("entries", cur.id, { amount_minor: (cur.amount_minor = prev) }));
-    } else if (a) {
-      const day = spec.kind === "income" ? (p && p.income_day) || 10 : spec.kind === "salary" ? (emp && emp.pay_day) || 10 : spec.kind === "org_expense" ? 1 : 15;
-      const r = await safe(() => DB.insert("entries", { kind: spec.kind, project_id: spec.project_id, employee_id: spec.employee_id || null, title: spec.kind === "expense" || spec.kind === "org_expense" ? spec.title : null, amount_minor: a, date: C.dayInMonth(key, day) }));
-      S.entries.push(r);
-      if (spec.kind === "salary" && spec.project_id && spec.employee_id) await DB.addMember(spec.project_id, spec.employee_id);
-      pushUndo("добавление суммы", async () => { await DB.remove("entries", r.id); S.entries = S.entries.filter((x) => x !== r); });
-    }
-    after();
+    td.classList.add("is-editing");
+    td.innerHTML = `<input class="yt-input" inputmode="decimal" value="${cur ? esc(C.amountToInput(cur.amount_minor)) : ""}" />`;
+    const inp = $("input", td); inp.focus(); inp.select();
+    let done = false;
+    const finish = async (save) => {
+      if (done) return; done = true;
+      if (!save) return after();
+      const v = inp.value.trim(), a = v === "" ? 0 : C.parseAmount(v);
+      if (a == null || a < 0) { toast("не похоже на сумму"); return after(); }
+      if (cur && a === cur.amount_minor) return after();
+      if (cur && !a) {
+        await safe(() => DB.remove("entries", cur.id)); S.entries = S.entries.filter((x) => x !== cur);
+        pushUndo("удаление суммы", async () => { const { id, created_at, updated_at, ...rest } = cur; const r = await DB.insert("entries", rest); S.entries.push(r); });
+      } else if (cur) {
+        const prev = cur.amount_minor; cur.amount_minor = a; await safe(() => DB.update("entries", cur.id, { amount_minor: a }));
+        pushUndo("изменение суммы", () => DB.update("entries", cur.id, { amount_minor: (cur.amount_minor = prev) }));
+      } else if (a) {
+        const day = spec.kind === "income" ? (p && p.income_day) || 10 : spec.kind === "salary" ? (emp && emp.pay_day) || 10 : spec.kind === "org_expense" ? 1 : 15;
+        const r = await safe(() => DB.insert("entries", { kind: spec.kind, project_id: spec.project_id, employee_id: spec.employee_id || null, title: spec.kind === "expense" || spec.kind === "org_expense" ? spec.title : null, amount_minor: a, date: C.dayInMonth(key, day) }));
+        S.entries.push(r);
+        if (spec.kind === "salary" && spec.project_id && spec.employee_id) await DB.addMember(spec.project_id, spec.employee_id);
+        pushUndo("добавление суммы", async () => { await DB.remove("entries", r.id); S.entries = S.entries.filter((x) => x !== r); });
+      }
+      after();
+    };
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); finish(true); } else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); } });
+    inp.addEventListener("blur", () => finish(true));
+    inp.addEventListener("click", (e) => e.stopPropagation());
   }
   const kindPill = (k, extra) => `<span class="k-pill ${extra || ""}" style="--c:${K[k]}">${KIND_LABEL[k]}</span>`;
   const byName = (a, b) => (a.last_name || a.first_name || "").localeCompare(b.last_name || b.first_name || "", "ru") || (a.first_name || "").localeCompare(b.first_name || "", "ru");

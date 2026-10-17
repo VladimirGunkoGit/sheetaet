@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>sheetaet · сводная за год (тест)</title>
+<meta name="robots" content="noindex" />
+<script>try { var t = localStorage.getItem("sheetaet_theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="lab.css?v=1" />
+</head>
+<body>
+<header class="bar">
+  <a class="back" href="../sut-media/" title="Вернуться в приложение">‹ sheetaet</a>
+  <div class="bar-title"><h1>Сводная за год</h1><span class="tag">тестовая страница</span></div>
+  <div class="year">
+    <button class="ybtn" data-y="-1" aria-label="Предыдущий год">‹</button>
+    <span id="year"></span>
+    <button class="ybtn" data-y="1" aria-label="Следующий год">›</button>
+  </div>
+  <div class="tools">
+    <div class="seg" role="group" aria-label="Единицы">
+      <button data-units="rub" class="is-on">₽</button><button data-units="k">тыс. ₽</button>
+    </div>
+    <div class="seg" role="group" aria-label="Плотность">
+      <button data-dens="comfy" class="is-on" title="Просторно">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 5h12M4 10h12M4 15h12"/></svg></button><button data-dens="compact" title="Плотно">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4h12M4 8h12M4 12h12M4 16h12"/></svg></button>
+    </div>
+    <button class="tbtn" id="fold" title="Свернуть / развернуть все разделы">свернуть всё</button>
+    <button class="tbtn icon" id="theme" title="Тема" aria-label="Сменить тему">◐</button>
+  </div>
+</header>
+
+<p class="legend" id="legend"></p>
+
+<main class="grid-scroll" id="scroll" tabindex="0" aria-label="Сводная таблица за год">
+  <table class="sheet" id="sheet"></table>
+</main>
+<p class="msg" id="msg" hidden></p>
+
+<script src="../config.js?v=6"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="../core.js?v=6"></script>
+<script src="lab.js?v=1"></script>
+</body>
+</html>

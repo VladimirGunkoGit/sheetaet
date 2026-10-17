@@ -1,0 +1,173 @@
+/* =================================================================
+   sheetaet · тестовая сводная таблица за год
+   Принципы (Fluent DataGrid, Apple HIG Tables & Outline views, бухгалтерская вёрстка):
+   1. Монохром. Цвет — только акцент: точка раздела и отрицательное число.
+   2. Числа — моноширинные цифры (tnum), выравнивание вправо, заголовки над числами тоже вправо.
+   3. Один кегль на всю таблицу; иерархия — начертанием, отступом и линиями, а не размером.
+   4. Только горизонтальные волосяные линии; вертикальных нет — колонки держит выравнивание.
+   5. Итог раздела стоит в строке раздела (как в outline view): раздел можно свернуть, итог останется.
+   6. Ключевые результаты — над ними линия; «чистая прибыль» — двойная линия снизу, как в отчётности.
+   7. Шапка с месяцами, первая колонка и ИТОГО закреплены; перекрестие строки и колонки под курсором.
+   8. Будущие месяцы (план) — приглушены; текущий месяц — светлая колонка и метка в шапке.
+   ================================================================= */
+:root{
+  --bg:#000; --fg:#fff;
+  --text:rgba(255,255,255,.92); --soft:rgba(255,255,255,.66); --muted:rgba(255,255,255,.42);
+  --rule:rgba(255,255,255,.085); --rule-strong:rgba(255,255,255,.32);
+  --hover:rgba(255,255,255,.065); --cross:rgba(255,255,255,.035); --cur:rgba(255,255,255,.075);
+  --chip:rgba(255,255,255,.1);
+  --neg:rgb(240,118,118);
+  --font:"Onest", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --fs:14px; --row:40px; --sec-gap:14px;
+  --w-label:216px; --w-month:88px; --w-total:112px;
+  color-scheme:dark;
+}
+[data-theme="light"]{
+  --bg:#fff; --fg:#000;
+  --text:rgba(0,0,0,.9); --soft:rgba(0,0,0,.64); --muted:rgba(0,0,0,.42);
+  --rule:rgba(0,0,0,.08); --rule-strong:rgba(0,0,0,.36);
+  --hover:rgba(0,0,0,.045); --cross:rgba(0,0,0,.025); --cur:rgba(0,0,0,.05);
+  --chip:rgba(0,0,0,.06);
+  --neg:rgb(206,52,52);
+  color-scheme:light;
+}
+:root.dens-compact{ --row:31px; --sec-gap:8px; }
+
+*{ box-sizing:border-box; }
+html, body{ height:100%; margin:0; }
+body{ background:var(--bg); color:var(--text); font-family:var(--font); font-size:var(--fs); line-height:1.3;
+  display:flex; flex-direction:column; -webkit-font-smoothing:antialiased; overflow:hidden; }
+button{ font:inherit; color:inherit; cursor:pointer; }
+
+/* ---------- верхняя панель ---------- */
+.bar{ flex:none; display:flex; align-items:center; flex-wrap:wrap; gap:12px 20px; padding:calc(env(safe-area-inset-top) + 16px) 24px 10px; }
+.back{ color:var(--soft); text-decoration:none; font-size:13px; }
+.back:hover{ color:var(--fg); }
+.bar-title{ display:flex; align-items:baseline; gap:10px; }
+h1{ margin:0; font-size:24px; font-weight:700; letter-spacing:-.01em; color:var(--fg); }
+.tag{ font-size:11px; color:var(--muted); border:1px solid var(--rule-strong); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+.year{ display:flex; align-items:center; gap:4px; font-size:20px; font-weight:600; color:var(--fg); font-feature-settings:"tnum" 1; }
+.ybtn{ border:none; background:transparent; width:32px; height:32px; border-radius:8px; font-size:22px; line-height:1; color:var(--soft); }
+.ybtn:hover{ background:var(--chip); color:var(--fg); }
+.tools{ margin-left:auto; display:flex; align-items:center; gap:8px; }
+.seg{ display:inline-flex; background:var(--chip); border-radius:9px; padding:2px; }
+.seg button{ border:none; background:transparent; height:30px; min-width:34px; padding:0 10px; border-radius:7px; color:var(--soft); font-size:13px; display:inline-flex; align-items:center; justify-content:center; }
+.seg button.is-on{ background:var(--bg); color:var(--fg); box-shadow:0 0 0 1px var(--rule-strong); }
+.tbtn{ border:none; background:var(--chip); height:34px; padding:0 12px; border-radius:9px; color:var(--soft); font-size:13px; white-space:nowrap; }
+.tbtn:hover, .seg button:hover{ color:var(--fg); }
+.tbtn.icon{ width:34px; padding:0; font-size:16px; }
+button:focus-visible, .grid-scroll:focus-visible{ outline:2px solid var(--fg); outline-offset:2px; }
+
+.legend{ flex:none; margin:0; padding:0 24px 10px; font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:4px 18px; }
+.legend i{ font-style:normal; color:var(--soft); }
+.legend .sw{ display:inline-block; width:10px; height:10px; border-radius:2px; vertical-align:-1px; margin-right:6px; }
+.msg{ padding:24px 32px; color:var(--soft); }
+
+/* ---------- область прокрутки: одна на оба направления, поэтому закрепление работает и сверху, и слева ---------- */
+.grid-scroll{ flex:1; min-height:0; overflow:auto; margin:0 24px calc(env(safe-area-inset-bottom) + 16px); overscroll-behavior:contain; -webkit-overflow-scrolling:touch; border-radius:2px; }
+
+/* ---------- таблица ---------- */
+.sheet{ border-collapse:separate; border-spacing:0; table-layout:fixed; width:max(100%, calc(var(--w-label) + 12 * var(--w-month) + var(--w-total))); }
+/* на широком экране колонки месяцев растягиваются поровну, на узком — не уже 88px (влезает 1 234 567) */
+.sheet col.c-m{ width:auto; }
+.sheet col.c-l{ width:var(--w-label); } .sheet col.c-t{ width:var(--w-total); }
+.sheet th, .sheet td{
+  height:var(--row); padding:0 12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  border-bottom:1px solid var(--rule);
+  /* все ячейки непрозрачны: подсветка строки и колонки — слоями поверх фона, поэтому закреплённые колонки ничего не пропускают */
+  background:linear-gradient(var(--row-t, transparent), var(--row-t, transparent)), linear-gradient(var(--col-t, transparent), var(--col-t, transparent)), var(--bg);
+}
+.sheet td.n, .sheet th.n{ padding:0 8px; text-align:right; font-feature-settings:"tnum" 1, "lnum" 1; font-variant-numeric:tabular-nums lining-nums; }
+
+/* шапка */
+.sheet thead th{ position:sticky; top:0; z-index:3; height:36px; font-size:12px; font-weight:500; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); border-bottom:1px solid var(--rule-strong); }
+.sheet thead th.l{ text-align:left; text-transform:none; letter-spacing:0; font-size:12px; }
+.sheet thead th .m{ display:inline-block; padding:2px 7px; margin-right:-7px; border-radius:6px; }
+.sheet thead th.is-cur .m{ background:var(--fg); color:var(--bg); font-weight:600; }
+.sheet thead th.is-plan{ color:var(--muted); }
+.sheet thead th.t{ color:var(--fg); font-weight:600; }
+
+/* первая колонка */
+.sheet .l{ position:sticky; left:0; z-index:2; text-align:left; color:var(--text); }
+.sheet thead th.l{ z-index:4; }
+.sheet td.l{ padding-left:30px; }
+
+/* ИТОГО — отделено сильной линией; на широком экране закреплено справа */
+.sheet .t{ border-left:1px solid var(--rule-strong); font-weight:600; color:var(--fg); }
+@media (min-width:900px){ .sheet .t{ position:sticky; right:0; z-index:2; } .sheet thead th.t{ z-index:4; } }
+
+/* текущий месяц и план */
+.sheet .is-cur{ --col-t:var(--cur); }
+.sheet td.is-plan{ color:var(--muted); }
+.sheet td.neg{ color:var(--neg); }
+.sheet td.is-plan.neg{ color:color-mix(in srgb, var(--neg) 60%, transparent); }
+
+/* раздел: точка акцентного цвета, итог раздела — в этой же строке */
+.sheet tr.sec > *{ border-top:var(--sec-gap) solid var(--bg); background-clip:padding-box; font-weight:600; color:var(--fg); }
+.sheet tr.sec > .l{ padding-left:12px; cursor:pointer; user-select:none; }
+.sheet tr.sec:first-child > *{ border-top-width:0; }
+.sec-in{ display:inline-flex; align-items:center; gap:8px; max-width:100%; }
+.chev{ flex:none; width:10px; height:10px; color:var(--muted); transition:transform .18s ease; }
+tr.sec.is-folded .chev{ transform:rotate(-90deg); }
+.dot{ flex:none; width:8px; height:8px; border-radius:50%; background:rgb(var(--c)); }
+.sec-name{ overflow:hidden; text-overflow:ellipsis; }
+tr.sec.no-kids .chev{ visibility:hidden; }
+tr.is-hidden{ display:none; }
+
+/* строка внутри раздела */
+.sheet tr.row td.l{ color:var(--soft); }
+.sheet tr.row.is-empty td.l{ color:var(--muted); }
+
+/* ключевой результат: линия сверху, полужирный */
+.sheet tr.res > *{ border-top:1px solid var(--rule-strong); font-weight:600; color:var(--fg); }
+.sheet tr.res > td.l{ padding-left:12px; }
+.sheet tr.res td.neg{ color:var(--neg); }
+/* чистая прибыль: двойная линия снизу — как итог в финансовой отчётности */
+.sheet tr.grand > *{ border-bottom:3px double var(--rule-strong); height:calc(var(--row) + 4px); }
+.sheet tr.pct td{ color:var(--muted); font-weight:400; }
+.sheet tr.pct td.l{ padding-left:12px; }
+
+/* перекрестие: строка и колонка под курсором */
+.sheet tbody tr:hover{ --row-t:var(--hover); }
+.sheet .is-col{ --col-t:var(--cross); }
+.sheet .is-col.is-cur{ --col-t:var(--cur); }
+.sheet thead th.is-col{ color:var(--fg); }
+
+/* телефон и узкое окно */
+@media (max-width:899px){
+  :root{ --fs:13.5px; --w-label:150px; --w-month:86px; --w-total:104px; }
+  .bar{ padding:calc(env(safe-area-inset-top) + 12px) 16px 8px; gap:10px 14px; }
+  .bar-title{ order:1; width:100%; }
+  .back{ order:0; }
+  .year{ order:2; }
+  .tools{ order:3; margin-left:auto; }
+  h1{ font-size:21px; }
+  .legend{ padding:0 16px 8px; }
+  .grid-scroll{ margin:0 0 env(safe-area-inset-bottom); }
+  .sheet td.l{ white-space:normal; line-height:1.2; padding-left:26px; }
+  .sheet tr.sec > .l, .sheet tr.res > td.l, .sheet tr.pct td.l{ padding-left:12px; }
+  .sheet th:first-child, .sheet td:first-child{ padding-left:16px; }
+  .sheet tr.row td:first-child{ padding-left:30px; }
+  #fold{ display:none; }
+}
+@media (prefers-reduced-motion:reduce){ .chev{ transition:none; } }
+.sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.arch{ color:var(--muted); font-weight:400; }
+/* план приглушён и в строках разделов и результатов */
+.sheet tr.sec td.is-plan, .sheet tr.res td.is-plan{ color:var(--muted); }
+.sheet tr.sec td.is-plan.neg, .sheet tr.res td.is-plan.neg{ color:color-mix(in srgb, var(--neg) 60%, transparent); }
+/* телефон: шапка в две строки, легенда — одна строка, названия разделов переносятся */
+@media (max-width:899px){
+  .bar{ gap:8px 10px; padding-bottom:6px; }
+  .bar-title{ width:auto; order:1; flex:1; min-width:0; }
+  .back{ display:none; }
+  .tag{ display:none; }
+  .year{ order:2; font-size:18px; }
+  .tools{ order:3; width:100%; margin-left:0; justify-content:space-between; }
+  .legend{ font-size:11px; gap:2px 12px; }
+  .legend > span:nth-child(1), .legend > span:nth-child(4){ display:none; }
+  .sec-in{ align-items:flex-start; }
+  .sec-name{ white-space:normal; line-height:1.2; }
+  .chev, .dot{ margin-top:4px; }
+  .sheet tr.sec > .l, .sheet tr.res > .l{ white-space:normal; line-height:1.2; }
+}

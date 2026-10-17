@@ -608,3 +608,17 @@
 .dt-total, .dt-row.dt-total{ background:rgba(178,150,232,.16); border-radius:5px; border-bottom:0; padding-top:5px; padding-bottom:5px; margin-top:10px; }
 .dt-row:has(+ .dt-total){ border-bottom-color:transparent; }
 [data-theme] .yt tbody tr.yt-total td.yt-l, .yt tbody tr.yt-total td.yt-l{ background-clip:padding-box; }
+
+/* ================= ПРАВКИ v7: стрелки листания — по бокам от названия месяца/года ================= */
+.money-monthbar{ justify-content:center; }
+.mbar-center.mbar-group{ flex:none; position:relative; display:inline-flex; align-items:center; gap:6px; }
+.mbar-group .cal-nav{ width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:9px; }
+.mbar-group .cal-nav:hover{ background:var(--inactive-bg); }
+.mbar-group .mbar-today{ position:absolute; left:100%; margin-left:6px; top:50%; transform:translateY(-50%) !important; }
+@media (max-width:420px){ .mbar-group .cal-nav{ width:30px; } .mbar-group{ gap:2px; } }
+.mbar-group .mbar-today{ transform:translateY(calc(-50% + 3px)) !important; }
+@media (max-width:420px){
+  .mbar-group{ gap:0; }
+  .mbar-group .cal-nav{ width:26px; }
+  .mbar-group .mbar-today{ margin-left:2px; padding:3px 6px; font-size:10px; }
+}

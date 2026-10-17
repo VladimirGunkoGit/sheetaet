@@ -409,9 +409,12 @@
     const today = C.todayStr(), curKey = C.monthKey(today), isYear = mode === "year";
     const isCur = isYear ? yearOf() === curKey.slice(0, 4) : S.month === curKey;
     const step = isYear ? 12 : 1;
-    return `<div class="cal-nav-row money-monthbar" data-step="${step}"><button class="cal-nav" data-mon="-${step}" aria-label="${isYear ? "Предыдущий год" : "Предыдущий месяц"}">‹</button>
-      <div class="mbar-center"><span class="money-month-title">${isYear ? yearOf() : C.monthLabel(S.month)}</span><button class="mbar-today ${isCur ? "is-dim" : ""}" data-mon="0" title="перейти к сегодняшнему дню">${C.dayLabel(today)}</button></div>
-      <button class="cal-nav" data-mon="${step}" aria-label="${isYear ? "Следующий год" : "Следующий месяц"}">›</button></div>`;
+    // стрелки — вплотную по бокам от названия; «сегодня» — справа от правой стрелки, название остаётся строго по центру
+    return `<div class="cal-nav-row money-monthbar" data-step="${step}"><div class="mbar-center mbar-group">
+      <button class="cal-nav" data-mon="-${step}" aria-label="${isYear ? "Предыдущий год" : "Предыдущий месяц"}">‹</button>
+      <span class="money-month-title">${isYear ? yearOf() : C.monthLabel(S.month)}</span>
+      <button class="cal-nav" data-mon="${step}" aria-label="${isYear ? "Следующий год" : "Следующий месяц"}">›</button>
+      <button class="mbar-today ${isCur ? "is-dim" : ""}" data-mon="0" title="перейти к сегодняшнему дню">${C.dayLabel(today)}</button></div></div>`;
   }
   function wireMonthBar(root) {
     $$("[data-mon]", root).forEach((b) => (b.onclick = () => setMonth(+b.dataset.mon === 0 ? C.monthKey(C.todayStr()) : C.addMonths(S.month, +b.dataset.mon))));

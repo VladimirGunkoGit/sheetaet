@@ -415,10 +415,14 @@
   function render() {
     if (!S.org) return;
     const page = S.page, isCard = !!S.id;
-    $("#page-title").textContent = isCard ? "" : TITLES[page] || "";
+    // организация: заголовок страницы — её название («Суть медиа»), ниже не повторяется
+    $("#page-title").textContent = isCard ? "" : page === "org" ? S.org.name || "организация" : TITLES[page] || "";
     $("#page-title").hidden = isCard;
-    $("#back-btn").hidden = !isCard;
-    $("#page-nav").hidden = isCard;
+    $("#page-title").classList.toggle("is-name", page === "org");   // название организации — как написано, без строчных
+    // нижнее меню временно скрыто: на проекты и сотрудников — с главной, в организацию — портфелем вверху; «назад» есть на всех страницах, кроме главной
+    $("#back-btn").hidden = !isCard && page === "";
+    $("#page-nav").hidden = true;
+    $("#org-btn").classList.toggle("is-on", page === "org");
     $("#fab").hidden = isCard || !(page === "projects" || page === "team");
     $$("#page-nav .nav-item").forEach((b) => b.classList.toggle("active", b.dataset.go === page));
     $("#account-pop").hidden = true;
@@ -435,7 +439,8 @@
   }
   $$("#page-nav .nav-item").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
   $("#brand-home").addEventListener("click", () => go(""));
-  $("#back-btn").addEventListener("click", () => goBack());
+  $("#back-btn").addEventListener("click", () => goBack(S.id ? S.page : ""));
+  $("#org-btn").addEventListener("click", () => go("org"));
   // личный кабинет — как в Gunco: кнопка-человечек справа вверху, всплывающее окно с почтой и «Выйти»
   $("#account-btn").addEventListener("click", () => {
     const pop = $("#account-pop"); if (!pop.hidden) { pop.hidden = true; return; }
@@ -644,6 +649,9 @@
   const extraTitles = (key) => S.extra[key] || [];
   async function yearAdd(a, root, redraw) {
     let spec = null;
+    // главная: новый проект / новый сотрудник — создаём и открываем карточку (там поступления, выплаты и прочее)
+    if (a.kind === "new-project") { const n = await inputBox({ title: "новый проект", placeholder: "название" }); if (!n || !n.trim()) return; const p = await createProject(n.trim()); go("projects", p.id); return; }
+    if (a.kind === "new-person") { const n = await inputBox({ title: "новый сотрудник", placeholder: "Фамилия Имя Отчество" }); if (!n || !n.trim()) return; const e = await createEmployee(n.trim(), true); go("team", e.id); return; }
     if (a.kind === "expense" || a.kind === "org_expense" || a.kind === "income") {
       const t = await inputBox({ title: a.kind === "income" ? "новое поступление" : a.kind === "expense" ? "новый расход" : "новый постоянный расход", value: a.kind === "income" ? INCOME_NEW : "", placeholder: a.kind === "income" ? "название" : a.kind === "expense" ? "сервер, реклама, техника…" : "офис, бухгалтер, банк…" });
       if (!t || !t.trim()) return; const title = t.trim();
@@ -982,10 +990,10 @@
     const fx = S.entries.filter((e) => e.kind === "org_expense" && e.date.startsWith(year));
     const rows = [];
     const inc = (e) => e.kind === "income", sal = (e) => e.kind === "salary", exp = (e) => e.kind === "expense", fxd = (e) => e.kind === "org_expense";
-    rows.push({ sec: "income", label: "поступления" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "income"), { ...open(p), of: (e) => inc(e) && e.project_id === p.id })));
+    rows.push({ sec: "income", label: "поступления", add: { kind: "new-project" } }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "income"), { ...open(p), of: (e) => inc(e) && e.project_id === p.id })));
     rows.push(yRow("выручка до налогов", sumOrg("income"), { cls: "is-sum", of: inc }));
     rows.push({ sec: "tax", label: "налоги" }); rows.push(yRow(`налоги · ${taxPct()} от выручки`, sumOrg("tax"), { cls: "is-sum", of: inc }));
-    rows.push({ sec: "salary", label: "зарплаты" });
+    rows.push({ sec: "salary", label: "зарплаты", add: { kind: "new-person" } });
     listPeople(per).forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => C.employeeMonth(e.id, S.entries, k).total), { open: e.id, page: "team", of: (x) => sal(x) && x.employee_id === e.id })));
     rows.push(yRow("зарплаты всего", sumOrg("salaries"), { cls: "is-sum", of: sal }));
     rows.push({ sec: "expense", label: "прочие расходы проектов" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "other"), { ...open(p), of: (e) => exp(e) && e.project_id === p.id })));
@@ -1317,8 +1325,9 @@
   }
 
   /* ================= СОТРУДНИКИ ================= */
-  async function createEmployee(name) {
-    const e = await safe(() => DB.insert("employees", { ...C.splitName(name), pay_day: 10, note: "", active: true, employment: "other" }));
+  async function createEmployee(name, whole) {
+    // whole — ФИО целиком одной строкой (как у людей из банка): сортировка по фамилии
+    const e = await safe(() => DB.insert("employees", { ...(whole ? { first_name: name, last_name: "" } : C.splitName(name)), pay_day: 10, note: "", active: true, employment: "other" }));
     S.employees.push(e); return e;
   }
   // список: по алфавиту, без фильтров и шапки; на телефоне без проектов; пусто вместо «—»
@@ -1521,7 +1530,6 @@
     const archN = S.projects.filter((p) => p.archived).length + S.employees.filter((e) => e.active === false).length;
     const yearMode = viewOf("org") === "year";
     main.innerHTML = `<div class="taskcard scroll sh-card sh-card--nav">
-      <div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="название организации" id="o-name">${esc(o.name || "")}</div>
       <div class="taskcard-meta sh-meta"><span class="meta-pill"><span class="meta-cap">адрес</span>/${esc(o.slug)}/</span>
         <button class="meta-pill" data-tax title="ставка налога от дохода проекта"><span class="meta-cap">налог</span>${taxPct()} от дохода проекта</button>
         <button class="meta-pill" data-rate><span class="meta-cap">цель по прибыли</span>${String(o.profit_rate ?? 20).replace(".", ",")}%</button>
@@ -1544,7 +1552,6 @@
     draw();
     wireMonthBar(main); wireViewToggle(main, () => renderOrg(main));
     $("[data-arch]", main).onclick = () => archiveBox(() => renderOrg(main));
-    $("#o-name").oninput = dbg(async () => { await safe(() => DB.updateOrg({ name: $("#o-name").innerText.trim() })); }, 500);
     $("[data-tax]", main).onclick = async () => {
       const v = await inputBox({ title: "ставка налога, %", sub: "от дохода каждого проекта. пересчитаются все месяцы и все таблицы", value: String(C.taxRateOf(o)).replace(".", ","), okLabel: "Сохранить" });
       if (v === null) return; const n = Number(v.replace(",", ".").replace("%", "").trim());

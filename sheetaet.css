@@ -766,3 +766,12 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 .st-opt.st-plan{ color:var(--muted); }
 .st-opt.st-late{ color:rgba(232,90,90,.85); }
 .st-opt.is-info{ cursor:default; font-weight:400; font-size:12px; }
+
+/* v28: нижнее меню временно скрыто; портфель — маленький, вверху рядом с человечком */
+#page-nav{ display:none !important; }
+.icon-btn--sm svg{ width:18px; height:18px; }
+#org-btn.is-on{ background:var(--inactive-bg); }
+.sh-pane{ padding-bottom:calc(var(--safe-bottom) + 32px); }
+.sh-card--nav{ padding-bottom:calc(var(--safe-bottom) + 32px); }
+@media (min-width:860px){ .icon-btn--sm svg{ width:19px; height:19px; } }
+.page-title.is-name{ text-transform:none; }

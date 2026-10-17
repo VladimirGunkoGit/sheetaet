@@ -183,13 +183,7 @@
       $$("[data-d]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(+b.dataset.d); }));
     });
   }
-  function pickColor(cur) {
-    return new Promise((res) => {
-      const m = modal(`<div class="modal-title">цвет проекта</div><div class="statusform-swatches">${PALETTE.map((c) => `<button class="swatch ${c === cur ? "is-cur" : ""}" data-c="${c}" style="--c:${c}"><span class="status-dot"></span></button>`).join("")}</div><div class="money-note">цвет нужен для диаграммы доходов</div>`);
-      m._onClose = () => res(null);
-      $$("[data-c]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(b.dataset.c); }));
-    });
-  }
+
   const statusDot = (s) => `<span class="status-dot" style="--c:${s ? s.c : "150,153,163"}"></span>`;
   const statusPill = (id) => { const s = statusById(id); return `<span class="status-pill" style="--c:${s ? s.c : "150,153,163"}"><span>${esc(s ? s.name : "без статуса")}</span>${statusDot(s)}</span>`; };
   // новый статус: название + цвет огонька (палитра как у проектов), сверху — живой предпросмотр плашки
@@ -1008,7 +1002,7 @@
   /* ================= ПРОЕКТЫ (канбан) ================= */
   async function createProject(name) {
     const minSort = S.projects.filter((p) => p.status === "progress").reduce((m, p) => Math.min(m, p.sort ?? 0), 0) - 1;
-    const p = await safe(() => DB.insert("projects", { name, emoji: "📁", color: PALETTE[(S.projects.length * 5 + 2) % PALETTE.length], status: "progress", sort: minSort, profit_rate: null, note: "", income_day: 10, archived: false }));
+    const p = await safe(() => DB.insert("projects", { name, emoji: "📁", color: PALETTE[1 + Math.floor(Math.random() * (PALETTE.length - 1))], /* цвет для диаграммы — сам, случайно из палитры */ status: "progress", sort: minSort, profit_rate: null, note: "", income_day: 10, archived: false }));
     S.projects.push(p); return p;
   }
   function renderProjects(main) {
@@ -1155,14 +1149,13 @@
     main.innerHTML = `<div class="taskcard scroll sh-card" id="pcard">
       <div class="proj-head sh-head"><div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="Новый проект" id="p-name">${esc(p.name || "")}</div></div>
       <div class="sh-fullname" contenteditable="true" data-placeholder="Полное название организации" id="p-full">${esc(p.full_name || "")}</div>
-      <div class="taskcard-meta sh-meta"><button class="status-slot" data-status>${statusPill(p.status)}</button>
+      <div class="taskcard-meta sh-meta">
         <button class="meta-pill ${p.start_date ? "" : "is-empty"}" data-d="start_date"><span class="meta-cap">договор с</span>${p.start_date ? fmtD(p.start_date) : ""}</button>
         <button class="meta-pill ${p.end_date || p.open_ended ? "" : "is-empty"}" data-d="end_date"><span class="meta-cap">до</span>${p.open_ended ? "бессрочно" : p.end_date ? fmtD(p.end_date) : ""}</button>
         <button class="meta-pill" data-incday title="ориентировочный день поступления денег каждый месяц"><span class="meta-cap">поступление ~</span>${p.income_day || 10}-го</button>
         <button class="meta-pill" data-grace title="через сколько дней после даты платежа план становится опозданием"><span class="meta-cap">опоздание через</span>${p.grace_days || 0} дн.</button>
         <button class="meta-pill meta-remind ${p.remind_kind ? "" : "is-off"}" data-remind title="${p.remind_kind ? REMIND[p.remind_kind] : "напоминание не стоит"}">${p.remind_kind ? R_ICON.bell + `<span class="remind-date">${C.dayLabel(nextRemind(p).at)}</span>` + R_ICON[p.remind_kind] : R_ICON.bellOff}</button>
-        ${p.archived ? `<span class="meta-pill is-empty">в архиве</span>` : ""}
-        <button class="meta-pill meta-color" data-color title="цвет проекта"><span class="status-dot" style="--c:${p.color || PALETTE[0]}"></span></button></div>
+        ${p.archived ? `<span class="meta-pill is-empty">в архиве</span>` : ""}</div>
       ${periodHead("grid")}
       <div id="p-tables" class="${S.month > C.monthKey(C.todayStr()) && viewOf("project") === "month" ? "is-plan-month" : ""}"></div>
       <div id="p-note" class="taskcard-desc" contenteditable="true" data-placeholder="заметки по проекту…"></div>
@@ -1179,8 +1172,6 @@
     full.oninput = dbg(async () => { const v = full.innerText.replace(/\s+/g, " ").trim(); if (!v) full.innerHTML = ""; p.full_name = v || null; await safe(() => DB.update("projects", p.id, { full_name: p.full_name })); }, 500);
     full.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); full.blur(); } };
     full.onpaste = (e) => { e.preventDefault(); document.execCommand("insertText", false, (e.clipboardData || window.clipboardData).getData("text").replace(/\s+/g, " ")); };
-    $("[data-status]", card).onclick = async () => { const k = await pickStatus(p.status); if (!k) return; const prev = p.status; p.status = k; await safe(() => DB.update("projects", p.id, { status: k })); pushUndo("статус", () => DB.update("projects", p.id, { status: (p.status = prev) })); renderProject(main); };
-    $("[data-color]", card).onclick = async () => { const c = await pickColor(p.color); if (!c) return; p.color = c; await safe(() => DB.update("projects", p.id, { color: c })); renderProject(main); };
     $("[data-grace]", card).onclick = async () => { const n = await graceBox(p.grace_days || 0, "поступления и расходы проекта"); if (n == null) return; p.grace_days = n; await safe(() => DB.update("projects", p.id, { grace_days: n })); renderProject(main); };
     $("[data-remind]", card).onclick = async () => { await remindBox(p, () => {}); renderProject(main); };
     $("[data-incday]", card).onclick = async () => { const d = await pickDay(p.income_day || 10, "поступление денег", "ориентировочный день, когда заказчик платит каждый месяц. подставляется в дату новых поступлений"); if (!d) return; p.income_day = d; await safe(() => DB.update("projects", p.id, { income_day: d })); renderProject(main); };

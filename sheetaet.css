@@ -697,3 +697,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 .remind-opt svg{ flex:none; width:18px; height:18px; }
 .remind-when-box{ display:flex; flex-direction:column; gap:8px; }
 .remind-when-box:empty{ display:none; }
+
+/* v20: в годовых таблицах нет колонки «ИТОГО» — ширина таблицы без неё */
+.yt-block .yt{ width:max(100%, 1380px); }
+@media (max-width:767px){ .yt-block .yt{ width:1166px; } }
+@media (min-width:860px){ .yt-block .yt{ width:max(100%, 1380px); } }
+@media (min-width:860px){ .yt-block .yt{ width:max(100%, 1272px); } }

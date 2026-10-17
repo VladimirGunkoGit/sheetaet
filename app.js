@@ -481,14 +481,15 @@
     }));
   }
 
-  /* ---------- годовая таблица: 12 одинаковых колонок + ИТОГО ---------- */
+  /* ---------- годовая таблица: 12 одинаковых колонок (без суммы за год) ---------- */
   // rows: {label, values[12], total, cls, open, page, pct} | {sec: kindKey, label}
   function yearGrid(rows) {
     const keys = C.monthsOfYear(yearOf()), curKey = C.monthKey(C.todayStr());
     const cur = (i) => (keys[i] === curKey ? " is-cur" : "");
-    const cols = `<colgroup><col class="yt-c-l" />${keys.map(() => `<col class="yt-c-m" />`).join("")}<col class="yt-c-t" /></colgroup>`;
+    // только 12 месяцев — сумма за год не показывается
+    const cols = `<colgroup><col class="yt-c-l" />${keys.map(() => `<col class="yt-c-m" />`).join("")}</colgroup>`;
     // строка месяцев — отдельной тонкой таблицей: закреплена сверху при прокрутке страницы и едет вбок вместе с таблицей
-    const head = `<thead><tr><th class="yt-l"></th>${C.MONTHS_COL.map((m, i) => `<th class="yt-m${cur(i)}" data-month="${keys[i]}" title="открыть месяц">${m}</th>`).join("")}<th class="yt-t">ИТОГО</th></tr></thead>`;
+    const head = `<thead><tr><th class="yt-l"></th>${C.MONTHS_COL.map((m, i) => `<th class="yt-m${cur(i)}" data-month="${keys[i]}" title="открыть месяц">${m}</th>`).join("")}</tr></thead>`;
     const cell = (r, v) => (r.pct ? (v == null ? "" : String(v).replace(".", ",") + "%") : v ? C.formatCell(v) : "");
     const neg = (r, v) => (!r.pct && v < 0 ? " is-neg" : "");
     const fs = folded(); let inSec = null;
@@ -496,9 +497,9 @@
       if (r.sec) inSec = r.sec; else if (r.cls === "yt-total") inSec = null;
       const fold = !r.sec && inSec ? ` data-in="${inSec}"` + (fs.has(foldId(inSec)) ? ` data-folded="1"` : "") : "";
       // раздел — широкая цветная полоса во всю строку (как в карточке проекта), по ячейке на месяц, чтобы текущий месяц не терялся
-      if (r.sec) return `<tr class="yt-sec${fs.has(foldId(r.sec)) ? " is-folded" : ""}" style="--c:${K[r.sec]}"><td class="yt-l">${foldBtn(r.sec)}<span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span>${r.add ? `<button class="sec-add" data-secadd="${esc(JSON.stringify(r.add))}" aria-label="Добавить строку" title="добавить">${PLUS_TINY}</button>` : ""}</td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}<td class="yt-t"></td></tr>`;
+      if (r.sec) return `<tr class="yt-sec${fs.has(foldId(r.sec)) ? " is-folded" : ""}" style="--c:${K[r.sec]}"><td class="yt-l">${foldBtn(r.sec)}<span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span>${r.add ? `<button class="sec-add" data-secadd="${esc(JSON.stringify(r.add))}" aria-label="Добавить строку" title="добавить">${PLUS_TINY}</button>` : ""}</td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}</tr>`;
       const ed = r.edit ? ` data-edit="${esc(JSON.stringify(r.edit))}"` : "";
-      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${cur(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}${r.cellIds && r.cellIds[i] ? ` data-eid="${r.cellIds[i]}"` : ""}>${cell(r, v)}</td>`).join("")}<td class="yt-t${neg(r, r.total)}">${cell(r, r.total)}</td></tr>`;
+      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${cur(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}${r.cellIds && r.cellIds[i] ? ` data-eid="${r.cellIds[i]}"` : ""}>${cell(r, v)}</td>`).join("")}</tr>`;
     }).join("");
     return `<div class="yt-block"><div class="yt-head"><table class="yt yt--head">${cols}${head}</table></div><div class="yt-wrap"><table class="yt">${cols}<tbody>${body}</tbody></table></div></div>`;
   }
@@ -679,7 +680,7 @@
       await loadScript("https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js");
       const year = viewOf("dash") === "year";
       const rows = year ? dashYearRows() : dashMonthRows();
-      const heads = year ? [...C.MONTHS_COL, "ИТОГО"] : [C.monthLabel(S.month)];
+      const heads = year ? [...C.MONTHS_COL] : [C.monthLabel(S.month)];
       const FONT = "Arial", LINE = "FFE6E6E6", SEC = "FFC4C4C4", MUTED = "FF8A8A8E", NEG = "FFD64545";
       const tint = (rgb, a) => "FF" + rgb.split(",").map((c) => Math.round(+c * a + 255 * (1 - a)).toString(16).padStart(2, "0")).join("").toUpperCase();
       const hasKop = !year && rows.some((r) => r.values && r.values.some((v) => v % 100));
@@ -688,7 +689,7 @@
       const wb = new window.ExcelJS.Workbook(); wb.creator = "sheetaet"; wb.created = new Date();
       const ws = wb.addWorksheet(year ? yearOf() : C.monthLabel(S.month), { views: [{ state: "frozen", xSplit: 1, ySplit: 3, showGridLines: false }] });
       const n = heads.length + 1;
-      ws.columns = [{ width: 36 }, ...heads.map((_, i) => ({ width: year && i === 12 ? 14 : year ? 12 : 18 }))];
+      ws.columns = [{ width: 36 }, ...heads.map(() => ({ width: year ? 12 : 18 }))];
       const t = ws.getCell("A1"); t.value = `${S.org.name || "организация"} — ${year ? "таблица за " + yearOf() + " год" : "таблица за " + C.monthLabel(S.month)}`; t.font = { name: FONT, size: 14, bold: true };
       const h = ws.getRow(3);
       h.getCell(1).value = year ? "₽" : ""; heads.forEach((m, i) => (h.getCell(i + 2).value = m));
@@ -706,7 +707,6 @@
         const bold = /is-sum|yt-total|yt-profit/.test(r.cls || "");
         row.getCell(1).value = plain(r.label);
         r.values.forEach((v, i) => (row.getCell(i + 2).value = r.pct ? (v == null ? null : v / 100) : v ? Math.round(v) / 100 : null));
-        if (year) row.getCell(n).value = r.pct ? (r.total == null ? null : r.total / 100) : r.total ? Math.round(r.total) / 100 : null;
         for (let c = 1; c <= n; c++) {
           const cell = row.getCell(c);
           cell.font = { name: FONT, size: 11, bold };

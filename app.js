@@ -22,6 +22,9 @@
   const KIND_LABEL = { income: "доход", salary: "зарплаты", expense: "расход", tax: "налоги", profit: "прибыль", fixed: "постоянные" };
   const EMOJIS = ["🎼","🎭","🎵","🎻","🎪","🏛️","💻","🎓","🕺","🪆","🏮","👁️","📁","📣","🎬","🎤","📷","🖥️","📱","🎨","✏️","📚","🌍","🧩","⚡","🔥","💡","📈","🛠️","🏢","🎯","🌱","🏠","☕","✈️","🚗","🎁","❤️","⭐","🎉"];
   const TRASH = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5.5h6V7M6.5 7l.9 12.5h9.2L17.5 7"/></svg>`;
+  const INCOME_DEFAULT = "Регулярный платеж", INCOME_NEW = "Поступление";
+  const incTitle = (e) => (e.title || INCOME_DEFAULT).trim();
+  const PLUS_TINY = `<svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 2v8M2 6h8"/></svg>`;
   const PLUS = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M12 6.5v11M6.5 12h11"/></svg>`;
 
   /* ================= СОСТОЯНИЕ ================= */
@@ -355,6 +358,7 @@
     Object.assign(S, d); S.statuses.sort((a, b) => a.ord - b.ord);
     $("#auth").hidden = true; $("#app").hidden = false;
     route();
+    notifyDue(); setInterval(notifyDue, 60 * 60 * 1000);
   }
 
   /* ================= КАРКАС ================= */
@@ -492,7 +496,7 @@
       if (r.sec) inSec = r.sec; else if (r.cls === "yt-total") inSec = null;
       const fold = !r.sec && inSec ? ` data-in="${inSec}"` + (fs.has(foldId(inSec)) ? ` data-folded="1"` : "") : "";
       // раздел — широкая цветная полоса во всю строку (как в карточке проекта), по ячейке на месяц, чтобы текущий месяц не терялся
-      if (r.sec) return `<tr class="yt-sec${fs.has(foldId(r.sec)) ? " is-folded" : ""}" style="--c:${K[r.sec]}"><td class="yt-l">${foldBtn(r.sec)}<span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span></td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}<td class="yt-t"></td></tr>`;
+      if (r.sec) return `<tr class="yt-sec${fs.has(foldId(r.sec)) ? " is-folded" : ""}" style="--c:${K[r.sec]}"><td class="yt-l">${foldBtn(r.sec)}<span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span>${r.add ? `<button class="sec-add" data-secadd="${esc(JSON.stringify(r.add))}" aria-label="Добавить строку" title="добавить">${PLUS_TINY}</button>` : ""}</td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}<td class="yt-t"></td></tr>`;
       const ed = r.edit ? ` data-edit="${esc(JSON.stringify(r.edit))}"` : "";
       return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${cur(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}>${cell(r, v)}</td>`).join("")}<td class="yt-t${neg(r, r.total)}">${cell(r, r.total)}</td></tr>`;
     }).join("");
@@ -506,6 +510,13 @@
     const redraw = () => { const w = $(".yt-wrap", root), sl = w ? w.scrollLeft : 0; (rerender || (() => render()))(); const w2 = $(".yt-wrap", root), h2 = $(".yt-head", root); if (w2) w2.scrollLeft = sl; if (h2 && w2) h2.scrollLeft = w2.scrollLeft; };
     $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, redraw, td)));
     wireFold(root);
+    $$(".yt tr[data-edit] td.yt-l", root).forEach((td) => {
+      const spec = JSON.parse(td.parentElement.dataset.edit);
+      if (!spec.title) return;
+      td.classList.add("is-rename"); td.title = "нажмите, чтобы переименовать";
+      td.onclick = (e) => { e.stopPropagation(); renameLine(spec, redraw); };
+    });
+    $$("[data-secadd]", root).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); yearAdd(JSON.parse(b.dataset.secadd), root, redraw); }));
     $$(".yt-block", root).forEach((b) => {
       const head = $(".yt-head", b), wrap = $(".yt-wrap", b);
       // закрепить вплотную к верху области прокрутки (минус её внутренний отступ), чтобы над строкой месяцев ничего не просвечивало
@@ -515,11 +526,46 @@
     });
   }
 
+  // «+» у раздела годовой таблицы: новая строка (расход по названию, человек, проект) — и сразу поле суммы в выбранном месяце
+  S.extra = S.extra || {};
+  const extraTitles = (key) => S.extra[key] || [];
+  async function yearAdd(a, root, redraw) {
+    let spec = null;
+    if (a.kind === "expense" || a.kind === "org_expense" || a.kind === "income") {
+      const t = await inputBox({ title: a.kind === "income" ? "новое поступление" : a.kind === "expense" ? "новый расход" : "новый постоянный расход", value: a.kind === "income" ? INCOME_NEW : "", placeholder: a.kind === "income" ? "название" : a.kind === "expense" ? "сервер, реклама, техника…" : "офис, бухгалтер, банк…" });
+      if (!t || !t.trim()) return; const title = t.trim();
+      const key = a.kind === "income" ? "inc:" + a.pid : a.kind === "expense" ? "exp:" + a.pid : "fix"; S.extra[key] = [...new Set([...extraTitles(key), title])];
+      spec = { kind: a.kind, project_id: a.kind === "org_expense" ? null : a.pid, title };
+    } else if (a.kind === "salary" && a.pid) {
+      const eid = await pickEmployee(null, a.pid); if (!eid) return; await DB.addMember(a.pid, eid);
+      spec = { kind: "salary", project_id: a.pid, employee_id: eid };
+    } else if (a.kind === "salary" && a.eid) {
+      const pid = await pickProject(projectsOf(a.eid), "добавить в проект"); if (!pid) return; await DB.addMember(pid, a.eid);
+      spec = { kind: "salary", project_id: pid, employee_id: a.eid };
+    }
+    if (!spec) return;
+    redraw();
+    // открыть ячейку выбранного месяца (или января, если смотрим другой год) у новой строки
+    const mk = S.month.slice(0, 4) === yearOf() ? S.month : yearOf() + "-01";
+    const tr = $$("tr[data-edit]", root).find((r) => { const x = JSON.parse(r.dataset.edit); return x.kind === spec.kind && (x.project_id || null) === (spec.project_id || null) && (x.employee_id || null) === (spec.employee_id || null) && (x.title || null) === (spec.title || null); });
+    const td = tr && $(`td[data-mk="${mk}"]`, tr); if (td) { td.scrollIntoView({ block: "nearest", inline: "center" }); td.click(); }
+  }
+  // переименовать строку (поступление, расход, постоянный расход): меняется название у всех её сумм
+  async function renameLine(spec, redraw) {
+    const v = await inputBox({ title: "название строки", value: spec.title, okLabel: "Сохранить" }); if (v == null) return;
+    const title = v.trim(); if (!title || title === spec.title) return;
+    const same = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && (spec.kind === "income" ? incTitle(e) : (e.title || "расход").trim()) === spec.title;
+    const list = S.entries.filter(same);
+    for (const e of list) { e.title = title; await safe(() => DB.update("entries", e.id, { title })); }
+    const key = spec.kind === "income" ? "inc:" + spec.project_id : spec.kind === "expense" ? "exp:" + spec.project_id : "fix";
+    S.extra[key] = extraTitles(key).map((t) => (t === spec.title ? title : t));
+    redraw();
+  }
   // правка одной ячейки годовой таблицы (проект, сотрудник, организация): прямо в ячейке, без окна —
   // Enter или клик мимо сохраняет, Esc отменяет; пусто — сумма убирается
   function editYearCell(spec, key, after, td) {
     const match = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && C.inMonth(e.date, key)
-      && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? true : (e.title || "расход").trim() === spec.title);
+      && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? incTitle(e) === spec.title : (e.title || "расход").trim() === spec.title);
     const list = S.entries.filter(match);
     if (list.length > 1) { toast(`в ${C.monthPrep(key)} здесь ${list.length} записи — открываю месяц`); localStorage.setItem("sheetaet_view_" + (S.page === "team" ? "employee" : S.page === "org" ? "org" : "project"), "month"); setMonth(key); return; }
     if (!td || td.querySelector("input")) return;
@@ -542,7 +588,7 @@
         pushUndo("изменение суммы", () => DB.update("entries", cur.id, { amount_minor: (cur.amount_minor = prev) }));
       } else if (a) {
         const day = spec.kind === "income" ? (p && p.income_day) || 10 : spec.kind === "salary" ? (emp && emp.pay_day) || 10 : spec.kind === "org_expense" ? 1 : 15;
-        const r = await safe(() => DB.insert("entries", { kind: spec.kind, project_id: spec.project_id, employee_id: spec.employee_id || null, title: spec.kind === "expense" || spec.kind === "org_expense" ? spec.title : null, amount_minor: a, date: C.dayInMonth(key, day) }));
+        const r = await safe(() => DB.insert("entries", { kind: spec.kind, project_id: spec.project_id, employee_id: spec.employee_id || null, title: spec.kind === "salary" ? null : spec.title, amount_minor: a, date: C.dayInMonth(key, day) }));
         S.entries.push(r);
         if (spec.kind === "salary" && spec.project_id && spec.employee_id) await DB.addMember(spec.project_id, spec.employee_id);
         pushUndo("добавление суммы", async () => { await DB.remove("entries", r.id); S.entries = S.entries.filter((x) => x !== r); });
@@ -699,6 +745,7 @@
     main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead("dash", yearMode ? "year" : "month")}<div id="dash-body"></div></div>`;
     wireMonthBar(main); wireViewToggle(main, () => renderDashboard(main));
     const body = $("#dash-body", main);
+    const rb = remindBanner(); if (rb) { body.insertAdjacentHTML("beforebegin", rb); wireRemindBanner(main, () => renderDashboard(main)); }
     if (S.dashTab === "table" && yearMode) { body.innerHTML = yearGrid(dashYearRows()); wireYearGrid(body, "dash"); return; }
     if (S.dashTab === "table") { body.innerHTML = dashTable(cur); $$("[data-open]", body).forEach((r) => (r.onclick = () => go(r.dataset.page, r.dataset.open))); wireFold(body); return; }
     const prevName = yearMode ? String(+yearOf() - 1) + " году" : C.monthPrep(prevKey);
@@ -794,6 +841,68 @@
     } });
   }
 
+  /* ================= НАПОМИНАНИЯ ПО ПРОЕКТАМ =================
+     Каждый месяц перед поступлением: «выставить акт / счёт / акт + счёт».
+     Дата — за 10 дней до дня поступления (income_day) или свой день месяца (remind_day).
+     «Готово» отмечается за месяц поступления (remind_done = 'YYYY-MM'). */
+  const REMIND = { act: "выставить акт", invoice: "выставить счёт", both: "выставить акт + счёт" };
+  const addDays = (d, n) => { const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+  function remindFor(p, mk) {
+    const pay = C.dayInMonth(mk, p.income_day || 10);
+    let at = addDays(pay, -10);
+    if (p.remind_day) { at = C.dayInMonth(mk, p.remind_day); if (at > pay) at = C.dayInMonth(C.addMonths(mk, -1), p.remind_day); }
+    return { mk, pay, at };
+  }
+  // ближайшее ещё не отмеченное напоминание (для подписи в карточке)
+  function nextRemind(p) {
+    const cur = C.monthKey(C.todayStr()), t = C.todayStr();
+    for (let i = -1; i <= 2; i++) { const r = remindFor(p, C.addMonths(cur, i)); if (r.pay >= t && !(p.remind_done && p.remind_done >= r.mk)) return r; }
+    return remindFor(p, C.addMonths(cur, 1));
+  }
+  // что пора сделать сегодня: по ближайшему предстоящему поступлению дата напоминания уже наступила, а «готово» не отмечено
+  function dueReminders() {
+    const t = C.todayStr(), out = [];
+    S.projects.filter((p) => p.remind_kind && !p.archived).forEach((p) => { const r = nextRemind(p); if (r.at <= t) out.push({ p, ...r }); });
+    return out.sort((a, b) => a.pay.localeCompare(b.pay));
+  }
+  // уведомление браузера (пока приложение открыто) — не чаще раза в день на проект
+  function notifyDue() {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    dueReminders().forEach((r) => {
+      const key = `sheetaet_ntf_${r.p.id}_${r.mk}_${C.todayStr()}`;
+      try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch (e) {}
+      try { new Notification(`${r.p.emoji || "📁"} ${r.p.name || "проект"}: ${REMIND[r.p.remind_kind]}`, { body: `поступление ~${C.dayLong(r.pay)}`, tag: "sheetaet-" + r.p.id }); } catch (e) {}
+    });
+  }
+  async function markRemindDone(p, mk) {
+    const prev = p.remind_done; p.remind_done = mk;
+    await safe(() => DB.update("projects", p.id, { remind_done: mk }));
+    pushUndo("напоминание", () => DB.update("projects", p.id, { remind_done: (p.remind_done = prev) }));
+  }
+  function remindBanner() {
+    const list = dueReminders(); if (!list.length) return "";
+    return `<div class="remind-box">${list.map((r) => `<div class="remind-row"><span class="remind-bell">🔔</span>
+      <button class="remind-proj" data-ropen="${r.p.id}">${pl(r.p)}</button><span class="remind-what">${REMIND[r.p.remind_kind]}</span>
+      <span class="remind-when">поступление ~${C.dayLong(r.pay)}</span><button class="chip remind-done" data-rdone="${r.p.id}" data-mk="${r.mk}">готово</button></div>`).join("")}</div>`;
+  }
+  function wireRemindBanner(root, rerender) {
+    $$("[data-ropen]", root).forEach((b) => (b.onclick = () => go("projects", b.dataset.ropen)));
+    $$("[data-rdone]", root).forEach((b) => (b.onclick = async () => { await markRemindDone(projById(b.dataset.rdone), b.dataset.mk); toast("отмечено — следующее напоминание через месяц"); rerender(); }));
+  }
+  // выбор дня напоминания: «за 10 дней до поступления» или свой день месяца
+  function pickRemindDay(p) {
+    return new Promise((res) => {
+      const m = modal(`<div class="modal-title">когда напоминать</div>
+        <button class="remind-auto ${p.remind_day ? "" : "is-on"}" data-auto>за 10 дней до поступления</button>
+        <div class="money-note">или свой день каждого месяца:</div>
+        <div class="day-grid">${Array.from({ length: 31 }, (_, i) => `<button class="cal-day ${i + 1 === p.remind_day ? "sel" : ""}" data-d="${i + 1}">${i + 1}</button>`).join("")}</div>
+        <div class="money-note">поступление ~${p.income_day || 10}-го. если день позже поступления — напомню в прошлом месяце</div>`, "cal-card");
+      m._onClose = () => res(undefined);
+      $("[data-auto]", m).onclick = () => { m._onClose = null; m.remove(); res(null); };
+      $$("[data-d]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(+b.dataset.d); }));
+    });
+  }
+
   /* ================= КАРТОЧКА ПРОЕКТА ================= */
   const dbg = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
   const fmtD = (d) => { const [y, m, dd] = d.split("-"); return `${dd}.${m}.${y}`; };
@@ -802,14 +911,14 @@
   function entryRow(e) {
     const emp = empById(e.employee_id);
     const left = e.kind === "salary" ? `<button class="ent-who ${emp ? "" : "is-empty"}" data-who>${esc(emp ? C.fullName(emp) || "без имени" : "кому")}</button>`
-      : e.kind === "income" ? `<span class="ent-who ent-in">Поступление</span>`
+      : e.kind === "income" ? `<input class="ent-title ent-in" data-title placeholder="${INCOME_NEW}" value="${esc(e.title || INCOME_DEFAULT)}" maxlength="120" />`
       : `<input class="ent-title" data-title placeholder="${e.kind === "org_expense" ? "офис, бухгалтер…" : "сервер, реклама, техника…"}" value="${esc(e.title || "")}" maxlength="120" />`;
     return `<div class="swipeable ent ${e._virtual ? "is-virtual" : ""}" data-eid="${e.id}" ${e._draft ? 'data-draft="1"' : ""}><div class="swipe-del">${TRASH}</div><div class="swipe-row ent-row">
       ${left}<input class="ent-amt" data-amt inputmode="decimal" placeholder="" value="${e.amount_minor ? esc(C.amountToInput(e.amount_minor)) : ""}" /><button class="ent-date" data-date>${e.date ? C.dayLabel(e.date) : ""}</button>
       <button class="ent-del" data-del aria-label="${e._virtual && e.kind === "salary" ? "Убрать из проекта" : "Удалить строку"}">${TRASH}</button></div></div>`;
   }
   function entrySection(kind, list, addLabel) {
-    return `<div class="ent-sec" data-kind="${kind}"><div class="ent-head" style="--c:${K[kind === "org_expense" ? "fixed" : kind]}">${kindPill(kind === "org_expense" ? "fixed" : kind)}<span class="ent-sum">${fm(list.reduce((s, e) => s + (e.amount_minor || 0), 0))}</span></div>
+    return `<div class="ent-sec" data-kind="${kind}"><div class="ent-head" style="--c:${K[kind === "org_expense" ? "fixed" : kind]}">${kindPill(kind === "org_expense" ? "fixed" : kind)}<button class="sec-add" data-add="${kind}" aria-label="Добавить строку" title="добавить">${PLUS_TINY}</button><span class="ent-sum">${fm(list.reduce((s, e) => s + (e.amount_minor || 0), 0))}</span></div>
       ${list.map((e) => entryRow(e)).join("")}<button class="proj-add-task ent-add" data-add="${kind}">+ ${addLabel}</button></div>`;
   }
   const entriesFor = (pid, kind) => S.entries.filter((e) => e.project_id === pid && e.kind === kind && C.inMonth(e.date, S.month)).sort((a, b) => a.date.localeCompare(b.date) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
@@ -828,7 +937,7 @@
     return out;
   }
   function virtualDraft(p, kind, emp) {
-    const d = { id: "virt-" + uid(), _draft: true, _virtual: true, kind, project_id: p.id, employee_id: emp ? emp.id : null, title: null, amount_minor: null, date: C.dayInMonth(S.month, kind === "income" ? p.income_day || 10 : emp ? emp.pay_day : 10) };
+    const d = { id: "virt-" + uid(), _draft: true, _virtual: true, kind, project_id: p.id, employee_id: emp ? emp.id : null, title: kind === "income" ? INCOME_DEFAULT : null, amount_minor: null, date: C.dayInMonth(S.month, kind === "income" ? p.income_day || 10 : emp ? emp.pay_day : 10) };
     S.drafts.push(d); return d;
   }
   function renderProject(main) {
@@ -840,6 +949,9 @@
         <button class="meta-pill ${p.start_date ? "" : "is-empty"}" data-d="start_date"><span class="meta-cap">договор с</span>${p.start_date ? fmtD(p.start_date) : ""}</button>
         <button class="meta-pill ${p.end_date || p.open_ended ? "" : "is-empty"}" data-d="end_date"><span class="meta-cap">до</span>${p.open_ended ? "бессрочно" : p.end_date ? fmtD(p.end_date) : ""}</button>
         <button class="meta-pill" data-incday title="ориентировочный день поступления денег каждый месяц"><span class="meta-cap">поступление ~</span>${p.income_day || 10}-го</button>
+        <label class="meta-pill meta-remind ${p.remind_kind ? "" : "is-empty"}" title="напоминание каждый месяц перед поступлением"><span class="meta-cap">напомнить</span><select data-remind>
+          <option value="" ${p.remind_kind ? "" : "selected"}>нет</option>${Object.entries(REMIND).map(([k, v]) => `<option value="${k}" ${p.remind_kind === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        ${p.remind_kind ? (() => { const r = nextRemind(p); return `<button class="meta-pill" data-remday title="когда напоминать"><span class="meta-cap">${p.remind_day ? "каждое " + p.remind_day + "-е" : "за 10 дней"}</span>${C.dayLabel(r.at)}</button>`; })() : ""}
         ${p.archived ? `<span class="meta-pill is-empty">в архиве</span>` : ""}
         <button class="meta-pill meta-color" data-color title="цвет проекта"><span class="status-dot" style="--c:${p.color || PALETTE[0]}"></span></button></div>
       ${periodHead("project", viewOf("project"))}
@@ -861,6 +973,12 @@
     $("[data-emoji]", card).onclick = async () => { const em = await pickEmoji(p.emoji); if (!em) return; p.emoji = em; await safe(() => DB.update("projects", p.id, { emoji: em })); renderProject(main); };
     $("[data-status]", card).onclick = async () => { const k = await pickStatus(p.status); if (!k) return; const prev = p.status; p.status = k; await safe(() => DB.update("projects", p.id, { status: k })); pushUndo("статус", () => DB.update("projects", p.id, { status: (p.status = prev) })); renderProject(main); };
     $("[data-color]", card).onclick = async () => { const c = await pickColor(p.color); if (!c) return; p.color = c; await safe(() => DB.update("projects", p.id, { color: c })); renderProject(main); };
+    $("[data-remind]", card).onchange = async (ev) => {
+      const v = ev.target.value || null; p.remind_kind = v; await safe(() => DB.update("projects", p.id, { remind_kind: v }));
+      if (v && "Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
+      if (v) toast(`напомню ${C.dayLong(nextRemind(p).at)}`); renderProject(main);
+    };
+    const rd = $("[data-remday]", card); if (rd) rd.onclick = async () => { const d = await pickRemindDay(p); if (d === undefined) return; p.remind_day = d; await safe(() => DB.update("projects", p.id, { remind_day: d })); toast(`напомню ${C.dayLong(nextRemind(p).at)}`); renderProject(main); };
     $("[data-incday]", card).onclick = async () => { const d = await pickDay(p.income_day || 10, "поступление денег", "ориентировочный день, когда заказчик платит каждый месяц. подставляется в дату новых поступлений"); if (!d) return; p.income_day = d; await safe(() => DB.update("projects", p.id, { income_day: d })); renderProject(main); };
     // дата окончания: под календарём «бессрочно» — второй даты нет, только пометка
     $$("[data-d]", card).forEach((b) => (b.onclick = async () => {
@@ -881,19 +999,23 @@
   function projectYearRows(p) {
     const year = yearOf(), ms = C.monthsOfYear(year);
     const ym = C.projectYear(p, S.entries, year, S.org);
-    const ent = S.entries.filter((e) => e.project_id === p.id && e.date.startsWith(year));
     const rows = [];
-    rows.push({ sec: "income", label: "доход" });
-    rows.push(yRow("Поступления", ym.map((m) => m.income), { edit: { kind: "income", project_id: p.id } }));
-    rows.push({ sec: "salary", label: "зарплаты" });
+    const ent = S.entries.filter((e) => e.project_id === p.id && e.date.startsWith(year));
+    rows.push({ sec: "income", label: "доход", add: { kind: "income", pid: p.id } });
+    const inc = ent.filter((e) => e.kind === "income");
+    const incTitles = [...new Set([...inc.map(incTitle), ...extraTitles("inc:" + p.id)])];
+    if (!incTitles.length) incTitles.push(INCOME_DEFAULT);
+    incTitles.forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(inc.filter((e) => incTitle(e) === t && C.inMonth(e.date, k)))), { edit: { kind: "income", project_id: p.id, title: t } })));
+    if (incTitles.length > 1) rows.push(yRow("итого доход", ym.map((m) => m.income), { cls: "is-sum" }));
+    rows.push({ sec: "salary", label: "зарплаты", add: { kind: "salary", pid: p.id } });
     const sal = ent.filter((e) => e.kind === "salary");
     const people = new Set([...membersOf(p.id), ...sal.map((e) => e.employee_id).filter(Boolean)]);
     [...people].map(empById).filter((e) => e && (e.active !== false || sal.some((x) => x.employee_id === e.id))).sort(byName)
       .forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => sumBy(sal.filter((x) => x.employee_id === e.id && C.inMonth(x.date, k)))), { open: e.id, page: "team", edit: { kind: "salary", project_id: p.id, employee_id: e.id } })));
     rows.push(yRow("итого зарплаты", ym.map((m) => m.salaries), { cls: "is-sum" }));
-    rows.push({ sec: "expense", label: "расход" });
+    rows.push({ sec: "expense", label: "расход", add: { kind: "expense", pid: p.id } });
     const exp = ent.filter((e) => e.kind === "expense");
-    [...new Set(exp.map((e) => (e.title || "расход").trim()))].sort((a, b) => a.localeCompare(b, "ru"))
+    [...new Set([...exp.map((e) => (e.title || "расход").trim()), ...extraTitles("exp:" + p.id)])].sort((a, b) => a.localeCompare(b, "ru"))
       .forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(exp.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))), { edit: { kind: "expense", project_id: p.id, title: t } })));
     rows.push(yRow("итого расходы", ym.map((m) => m.other), { cls: "is-sum" }));
     rows.push({ sec: "tax", label: "налоги" });
@@ -947,9 +1069,15 @@
       const amt = $("[data-amt]", row);
       amt.addEventListener("change", () => { const v = C.parseAmount(amt.value); if (v == null || v <= 0) { if (!isDraft) { toast("сумма должна быть больше нуля"); amt.value = C.amountToInput(get().amount_minor); } return; } commit({ amount_minor: v }); });
       amt.addEventListener("keydown", (e) => { if (e.key === "Enter") amt.blur(); });
-      const ti = $("[data-title]", row); if (ti) { ti.addEventListener("change", () => commit({ title: ti.value.trim() || null })); ti.addEventListener("keydown", (e) => { if (e.key === "Enter") ti.blur(); }); }
+      const ti = $("[data-title]", row); if (ti) { ti.addEventListener("change", () => { const e = get(); if (isDraft && e && !(e.amount_minor > 0)) { e.title = ti.value.trim() || null; delete e._virtual; return; } commit({ title: ti.value.trim() || null }); }); ti.addEventListener("keydown", (e) => { if (e.key === "Enter") ti.blur(); }); }
       const who = $("[data-who]", row); if (who) who.onclick = async () => { const eid = await pickEmployee(get().employee_id, projectId); if (!eid) return; const emp = empById(eid); const patch = { employee_id: eid }; if (isDraft && emp && !get()._dateSet) patch.date = C.dayInMonth(S.month, emp.pay_day); commit(patch); if (isDraft && projectId) { await DB.addMember(projectId, eid); } };
-      $("[data-date]", row).onclick = async () => { const v = await pickDate(get().date); if (!v) return; get()._dateSet = true; commit({ date: v }); };
+      $("[data-date]", row).onclick = async () => {
+        const v = await pickDate(get().date); if (!v) return;
+        const e = get(); e._dateSet = true;
+        // пустая строка: запоминаем дату в черновике (он больше не «виртуальный» и не пересоздаётся), сохранится вместе с суммой
+        if (isDraft && !(e.amount_minor > 0)) { e.date = v; delete e._virtual; rerender(); return; }
+        commit({ date: v });
+      };
       const del = async () => {
         const e = get(); if (!e) return;
         if (isDraft) {
@@ -966,11 +1094,11 @@
     });
     $$("[data-add]", box).forEach((b) => (b.onclick = () => {
       const kind = b.dataset.add; const proj = projById(projectId);
-      const d = { id: "draft-" + uid(), _draft: true, kind, project_id: projectId, employee_id: null, title: null, amount_minor: null, date: C.dayInMonth(S.month, kind === "income" ? (proj && proj.income_day) || 10 : kind === "expense" ? 15 : kind === "org_expense" ? 1 : 10) };
+      const d = { id: "draft-" + uid(), _draft: true, kind, project_id: projectId, employee_id: null, title: kind === "income" ? INCOME_NEW : null, amount_minor: null, date: C.dayInMonth(S.month, kind === "income" ? (proj && proj.income_day) || 10 : kind === "expense" ? 15 : kind === "org_expense" ? 1 : 10) };
       S.drafts.push(d); rerender();
       setTimeout(async () => {
         if (kind === "salary") { const eid = await pickEmployee(null, projectId); if (eid) { d.employee_id = eid; const emp = empById(eid); if (emp) d.date = C.dayInMonth(S.month, emp.pay_day); await DB.addMember(projectId, eid); rerender(); } }
-        const r2 = $(`[data-eid="${d.id}"]`, document); if (r2) $(kind === "expense" || kind === "org_expense" ? "[data-title]" : "[data-amt]", r2).focus();
+        const r2 = $(`[data-eid="${d.id}"]`, document); if (r2) { const f = $(kind === "salary" ? "[data-amt]" : "[data-title]", r2); f.focus(); if (kind === "income") f.select(); }
       }, 30);
     }));
   }
@@ -1088,7 +1216,7 @@
       const year = yearOf(), ms = C.monthsOfYear(year);
       const sal = S.entries.filter((x) => x.kind === "salary" && x.employee_id === e.id && x.date.startsWith(year));
       const pids = [...new Set([...projectsOf(e.id), ...sal.map((x) => x.project_id)])].map(projById).filter((p) => p && (!p.archived || sal.some((x) => x.project_id === p.id))).sort((a, b) => a.name.localeCompare(b.name, "ru"));
-      const rows = [{ sec: "salary", label: "зарплаты" }];
+      const rows = [{ sec: "salary", label: "зарплаты", add: { kind: "salary", eid: e.id } }];
       rows.push(yRow("без проекта", ms.map((k) => sumBy(sal.filter((x) => !x.project_id && C.inMonth(x.date, k)))), { edit: { kind: "salary", project_id: null, employee_id: e.id } }));
       pids.forEach((p) => rows.push(yRow(pl(p), ms.map((k) => sumBy(sal.filter((x) => x.project_id === p.id && C.inMonth(x.date, k)))), { open: p.id, page: "projects", edit: { kind: "salary", project_id: p.id, employee_id: e.id } })));
       rows.push(yRow("итого", ms.map((k) => sumBy(sal.filter((x) => C.inMonth(x.date, k)))), { cls: "is-sum" }));
@@ -1177,8 +1305,8 @@
   function orgYearRows() {
     const year = yearOf(), ms = C.monthsOfYear(year);
     const fx = S.entries.filter((e) => e.kind === "org_expense" && e.date.startsWith(year));
-    const rows = [{ sec: "fixed", label: "постоянные расходы" }];
-    fixedTitles().forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(fx.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))), { edit: { kind: "org_expense", project_id: null, title: t } })));
+    const rows = [{ sec: "fixed", label: "постоянные расходы", add: { kind: "org_expense" } }];
+    [...new Set([...fixedTitles(), ...extraTitles("fix")])].forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(fx.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))), { edit: { kind: "org_expense", project_id: null, title: t } })));
     rows.push(yRow("итого", ms.map((k) => sumBy(fx.filter((e) => C.inMonth(e.date, k)))), { cls: "is-sum" }));
     return rows;
   }

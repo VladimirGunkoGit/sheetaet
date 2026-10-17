@@ -20,7 +20,6 @@
   // цвета денег — везде одинаковые (ТЗ §8)
   const K = { income: "134,217,152", salary: "231,200,106", expense: "232,155,184", tax: "126,196,232", profit: "178,150,232", fixed: "232,120,120" };
   const KIND_LABEL = { income: "доход", salary: "зарплаты", expense: "расход", tax: "налоги", profit: "прибыль", fixed: "постоянные" };
-  const EMOJIS = ["🎼","🎭","🎵","🎻","🎪","🏛️","💻","🎓","🕺","🪆","🏮","👁️","📁","📣","🎬","🎤","📷","🖥️","📱","🎨","✏️","📚","🌍","🧩","⚡","🔥","💡","📈","🛠️","🏢","🎯","🌱","🏠","☕","✈️","🚗","🎁","❤️","⭐","🎉"];
   const TRASH = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5.5h6V7M6.5 7l.9 12.5h9.2L17.5 7"/></svg>`;
   const INCOME_DEFAULT = "Регулярный платеж", INCOME_NEW = "Поступление";
   const incTitle = (e) => (e.title || INCOME_DEFAULT).trim();
@@ -184,14 +183,6 @@
       $$("[data-d]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(+b.dataset.d); }));
     });
   }
-  function pickEmoji(cur) {
-    return new Promise((res) => {
-      const m = modal(`<div class="modal-title">эмодзи</div><input class="field" maxlength="8" placeholder="свой эмодзи (клавиатура)" /><div class="emoji-grid scroll">${EMOJIS.map((e) => `<button class="emoji-cell ${e === cur ? "is-cur" : ""}" data-e="${e}">${e}</button>`).join("")}</div>`, "emoji-card");
-      m._onClose = () => res(null);
-      $$("[data-e]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(b.dataset.e); }));
-      $("input", m).oninput = (e) => { const v = [...e.target.value.trim()]; if (v.length) { m._onClose = null; m.remove(); res(v[v.length - 1]); } };
-    });
-  }
   function pickColor(cur) {
     return new Promise((res) => {
       const m = modal(`<div class="modal-title">цвет проекта</div><div class="statusform-swatches">${PALETTE.map((c) => `<button class="swatch ${c === cur ? "is-cur" : ""}" data-c="${c}" style="--c:${c}"><span class="status-dot"></span></button>`).join("")}</div><div class="money-note">цвет нужен для диаграммы доходов</div>`);
@@ -249,7 +240,7 @@
       const draw = () => {
         const qv = $("input", m).value.trim().toLowerCase();
         const list = orderedProjects().filter((p) => !qv || (p.name || "").toLowerCase().includes(qv));
-        $(".proj-list", m).innerHTML = `<button class="proj-add-row" data-new>${PLUS}</button>` + list.map((p) => `<button class="proj-pill ${sel.has(p.id) ? "is-on" : ""}" data-id="${p.id}"><span class="proj-emoji">${esc(p.emoji || "📁")}</span><span class="proj-name">${esc(p.name)}</span></button>`).join("");
+        $(".proj-list", m).innerHTML = `<button class="proj-add-row" data-new>${PLUS}</button>` + list.map((p) => `<button class="proj-pill ${sel.has(p.id) ? "is-on" : ""}" data-id="${p.id}"><span class="proj-name">${esc(p.name)}</span></button>`).join("");
         $$("[data-id]", m).forEach((b) => (b.onclick = () => { sel.has(b.dataset.id) ? sel.delete(b.dataset.id) : sel.add(b.dataset.id); draw(); }));
         $("[data-new]", m).onclick = async () => { const n = await inputBox({ title: "новый проект", placeholder: "название" }); if (!n || !n.trim()) return; const p = await createProject(n.trim()); sel.add(p.id); draw(); };
       };
@@ -489,7 +480,7 @@
   const fmz = (v) => (v ? fm(v) : "");
   const sumBy = (list) => list.reduce((s, e) => s + e.amount_minor, 0);
   const yRow = (label, values, o) => ({ label, values, total: values.reduce((s, v) => s + (v || 0), 0), ...(o || {}) });
-  const pl = (p) => `<span class="proj-emoji">${esc(p.emoji || "📁")}</span> ${esc(p.name || "без названия")}`;
+  const pl = (p) => esc(p.name || "без названия");   // эмодзи у проектов не показываются
 
   /* ---------- шапка месяца/года: ‹ октябрь 2026 [14 ОКТ] › ---------- */
   function monthBar(mode, mnav) {
@@ -883,10 +874,10 @@
         <span class="kpi-label"><span class="k-dot" style="--c:${K[k]}"></span>${label}${midYear ? " · факт" : isPlan ? " · план" : ""}</span>
         ${forecast ? `<span class="kpi-forecast">прогноз на год ${fmt(forecast[fk])}</span>` : ""}
         <span class="kpi-prev"><span><span class="kpi-tri kpi-tri--${cmp.tone}">${tri}</span>${cmp.isNew ? "новое" : cmp.change != null ? (cmp.change > 0 ? "+" : "") + cmp.change + "%" : ""}</span><span>в ${prevName} ${fmt(pv)}</span></span></button>`; }).join("")}</div>
-      <div class="ch-block"><div class="ch-title">чистая прибыль по проектам</div>${CH.bars(cur.per.filter((x) => shown.has(x.project.id) && (x.project.status !== "done" || x.income || x.total)).sort((a, b) => b.profit - a.profit).map((x) => ({ label: x.project.name, emoji: x.project.emoji, value: x.profit, c: K.profit })))}</div>
+      <div class="ch-block"><div class="ch-title">чистая прибыль по проектам</div>${CH.bars(cur.per.filter((x) => shown.has(x.project.id) && (x.project.status !== "done" || x.income || x.total)).sort((a, b) => b.profit - a.profit).map((x) => ({ label: x.project.name, value: x.profit, c: K.profit })))}</div>
       <div class="ch-stack">
         <div class="ch-block"><div class="ch-title">структура расходов</div>${CH.donut([{ label: "зарплаты", value: cur.salaries, c: K.salary }, { label: "налоги", value: cur.tax, c: K.tax }, { label: "прочие расходы проектов", value: cur.projOther, c: K.expense }, { label: "постоянные расходы", value: cur.fixed, c: K.fixed }], { label: "расход всего", value: cur.expense })}</div>
-        <div class="ch-block"><div class="ch-title">доход по проектам</div>${CH.donut(cur.per.map((x) => ({ label: x.project.name, emoji: x.project.emoji, value: x.income, c: x.project.color || PALETTE[2] })), { label: "доход всего", value: cur.income })}</div>
+        <div class="ch-block"><div class="ch-title">доход по проектам</div>${CH.donut(cur.per.map((x) => ({ label: x.project.name, value: x.income, c: x.project.color || PALETTE[2] })), { label: "доход всего", value: cur.income })}</div>
       </div>`;
     $$("[data-tab-go]", body).forEach((b) => (b.onclick = () => { S.dashTab = "table"; localStorage.setItem("sheetaet_dash", "table"); renderDashboard(main); }));
   }
@@ -949,7 +940,7 @@
     let h = "";
     S.statuses.forEach((s) => {
       const arr = live.filter((p) => p.status === s.id).sort(projSort);
-      h += `<div class="kb-col${arr.length ? "" : " kb-col--empty"}" data-status="${s.id}"><div class="kb-col-head">${statusDot(s)}<span>${esc(s.name)}</span></div><div class="kb-cards scroll">${arr.map((p) => { const m = pm(p); return `<div class="kb-card" data-id="${p.id}"><div class="kb-card-title"><span class="proj-emoji">${esc(p.emoji || "📁")}</span><span class="kb-name">${esc(p.name || "Без названия")}</span></div>${m.income || m.total ? `<span class="kb-profit ${m.profit < 0 ? "is-neg" : ""}" title="прибыль, ${cur}">${fm(m.profit)}</span>` : ""}</div>`; }).join("")}</div></div>`;
+      h += `<div class="kb-col${arr.length ? "" : " kb-col--empty"}" data-status="${s.id}"><div class="kb-col-head">${statusDot(s)}<span>${esc(s.name)}</span></div><div class="kb-cards scroll">${arr.map((p) => { const m = pm(p); return `<div class="kb-card" data-id="${p.id}"><div class="kb-card-title"><span class="kb-name">${esc(p.name || "Без названия")}</span></div>${m.income || m.total ? `<span class="kb-profit ${m.profit < 0 ? "is-neg" : ""}" title="прибыль, ${cur}">${fm(m.profit)}</span>` : ""}</div>`; }).join("")}</div></div>`;
     });
     main.innerHTML = `<div class="kanban" id="kanban">${h}</div>`;
     const kb = $("#kanban");
@@ -1002,7 +993,7 @@
     dueReminders().forEach((r) => {
       const key = `sheetaet_ntf_${r.p.id}_${r.mk}_${C.todayStr()}`;
       try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch (e) {}
-      try { new Notification(`${r.p.emoji || "📁"} ${r.p.name || "проект"}: ${REMIND[r.p.remind_kind]}`, { body: `поступление ~${C.dayLong(r.pay)}`, tag: "sheetaet-" + r.p.id }); } catch (e) {}
+      try { new Notification(`${r.p.name || "проект"}: ${REMIND[r.p.remind_kind]}`, { body: `поступление ~${C.dayLong(r.pay)}`, tag: "sheetaet-" + r.p.id }); } catch (e) {}
     });
   }
   async function markRemindDone(p, mk) {
@@ -1012,7 +1003,7 @@
   }
   function remindBanner() {
     const list = dueReminders(); if (!list.length) return "";
-    return `<div class="remind-box">${list.map((r) => `<div class="remind-row"><span class="remind-bell">🔔</span>
+    return `<div class="remind-box">${list.map((r) => `<div class="remind-row"><span class="remind-bell">${R_ICON.bell}</span>
       <button class="remind-proj" data-ropen="${r.p.id}">${pl(r.p)}</button><span class="remind-what">${REMIND[r.p.remind_kind]}</span>
       <span class="remind-when">поступление ~${C.dayLong(r.pay)}</span><button class="chip remind-done" data-rdone="${r.p.id}" data-mk="${r.mk}">готово</button></div>`).join("")}</div>`;
   }
@@ -1084,7 +1075,7 @@
   function renderProject(main) {
     const p = projById(S.id); if (!p) { go("projects", null, { replace: true }); return; }
     main.innerHTML = `<div class="taskcard scroll sh-card" id="pcard">
-      <div class="proj-head sh-head"><button class="proj-emoji-btn" data-emoji>${esc(p.emoji || "📁")}</button><div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="Новый проект" id="p-name">${esc(p.name || "")}</div></div>
+      <div class="proj-head sh-head"><div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="Новый проект" id="p-name">${esc(p.name || "")}</div></div>
       <div class="sh-fullname" contenteditable="true" data-placeholder="Полное название организации" id="p-full">${esc(p.full_name || "")}</div>
       <div class="taskcard-meta sh-meta"><button class="status-slot" data-status>${statusPill(p.status)}</button>
         <button class="meta-pill ${p.start_date ? "" : "is-empty"}" data-d="start_date"><span class="meta-cap">договор с</span>${p.start_date ? fmtD(p.start_date) : ""}</button>
@@ -1109,7 +1100,6 @@
     full.oninput = dbg(async () => { const v = full.innerText.replace(/\s+/g, " ").trim(); if (!v) full.innerHTML = ""; p.full_name = v || null; await safe(() => DB.update("projects", p.id, { full_name: p.full_name })); }, 500);
     full.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); full.blur(); } };
     full.onpaste = (e) => { e.preventDefault(); document.execCommand("insertText", false, (e.clipboardData || window.clipboardData).getData("text").replace(/\s+/g, " ")); };
-    $("[data-emoji]", card).onclick = async () => { const em = await pickEmoji(p.emoji); if (!em) return; p.emoji = em; await safe(() => DB.update("projects", p.id, { emoji: em })); renderProject(main); };
     $("[data-status]", card).onclick = async () => { const k = await pickStatus(p.status); if (!k) return; const prev = p.status; p.status = k; await safe(() => DB.update("projects", p.id, { status: k })); pushUndo("статус", () => DB.update("projects", p.id, { status: (p.status = prev) })); renderProject(main); };
     $("[data-color]", card).onclick = async () => { const c = await pickColor(p.color); if (!c) return; p.color = c; await safe(() => DB.update("projects", p.id, { color: c })); renderProject(main); };
     $("[data-remind]", card).onclick = async () => { await remindBox(p, () => {}); renderProject(main); };
@@ -1265,7 +1255,7 @@
     const total = rows.reduce((s, r) => s + r.t, 0);
     const row = (r) => { const pr = projectsOf(r.e.id).map(projById).filter((p) => p && !p.archived); return `<div class="swipeable emp" data-id="${r.e.id}"><div class="swipe-del">${TRASH}</div><div class="swipe-row emp-row">
       <span class="emp-name">${esc(C.fullName(r.e) || "без имени")}</span>
-      <span class="emp-projs">${pr.slice(0, 3).map((p) => `<span class="proj-pill task-proj" title="${esc(p.name)}"><span class="proj-emoji">${esc(p.emoji || "📁")}</span><span class="proj-name">${esc(p.name)}</span></span>`).join("")}${pr.length > 3 ? `<span class="proj-pill task-proj emp-more" title="${esc(pr.slice(3).map((p) => p.name).join(", "))}">ещё ${pr.length - 3}</span>` : ""}</span>
+      <span class="emp-projs">${pr.slice(0, 3).map((p) => `<span class="proj-pill task-proj" title="${esc(p.name)}"><span class="proj-name">${esc(p.name)}</span></span>`).join("")}${pr.length > 3 ? `<span class="proj-pill task-proj emp-more" title="${esc(pr.slice(3).map((p) => p.name).join(", "))}">ещё ${pr.length - 3}</span>` : ""}</span>
       <span class="meta-pill emp-day">${C.dayLabel(r.day)}</span>
       <span class="emp-sum">${fmz(r.t)}</span></div></div>`; };
     main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead("list")}
@@ -1298,7 +1288,7 @@
       const draw = () => {
         const qv = $("input", m).value.trim().toLowerCase();
         const list = orderedProjects().filter((p) => !ex.has(p.id) && (!qv || (p.name || "").toLowerCase().includes(qv)));
-        $(".proj-list", m).innerHTML = `<button class="proj-add-row" data-new>${PLUS}</button>` + (list.length ? list.map((p) => `<button class="proj-pill" data-id="${p.id}"><span class="proj-emoji">${esc(p.emoji || "📁")}</span><span class="proj-name">${esc(p.name || "без названия")}</span></button>`).join("") : `<span class="empty">нет проектов</span>`);
+        $(".proj-list", m).innerHTML = `<button class="proj-add-row" data-new>${PLUS}</button>` + (list.length ? list.map((p) => `<button class="proj-pill" data-id="${p.id}"><span class="proj-name">${esc(p.name || "без названия")}</span></button>`).join("") : `<span class="empty">нет проектов</span>`);
         $$("[data-id]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(b.dataset.id); }));
         $("[data-new]", m).onclick = async () => { const n = await inputBox({ title: "новый проект", placeholder: "название" }); if (!n || !n.trim()) return; const p = await createProject(n.trim()); m._onClose = null; m.remove(); res(p.id); };
       };
@@ -1310,7 +1300,7 @@
   function payBox(e, p, current) {
     return new Promise((res) => {
       let date = current ? current.date : C.dayInMonth(S.month, e.pay_day);
-      const m = modal(`<div class="modal-title">${esc(p.emoji || "📁")} ${esc(p.name || "проект")}</div><div class="confirm-sub">${esc(C.fullName(e))} · ${C.monthLabel(S.month)}${current ? "" : p.end_date && !p.open_ended ? " — новая выплата проставится до " + C.MONTHS_GEN[+p.end_date.slice(5, 7) - 1] + " " + p.end_date.slice(0, 4) : " — новая выплата проставится до конца года"}</div>
+      const m = modal(`<div class="modal-title">${esc(p.name || "проект")}</div><div class="confirm-sub">${esc(C.fullName(e))} · ${C.monthLabel(S.month)}${current ? "" : p.end_date && !p.open_ended ? " — новая выплата проставится до " + C.MONTHS_GEN[+p.end_date.slice(5, 7) - 1] + " " + p.end_date.slice(0, 4) : " — новая выплата проставится до конца года"}</div>
         <div class="pay-amount-wrap"><input class="field field--amount" inputmode="decimal" placeholder="сумма" value="${current ? esc(C.amountToInput(current.amount_minor)) : ""}" /><span class="pay-cur">₽</span></div>
         <button class="meta-pill" data-date><span class="meta-cap">дата</span>${C.dayLabel(date)}</button>
         <div class="minput-err" hidden></div>

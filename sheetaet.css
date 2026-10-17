@@ -641,3 +641,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
   .taskcard.sh-card{ width:100%; margin-inline:0; padding-left:20vw; padding-right:20vw; }
   .sh-card #p-tables, .sh-card #e-body, .sh-card #o-fixed{ margin-left:-15vw; margin-right:-15vw; }
 }
+/* кнопка «Excel» на «Таблице» — отделена от переключателя «Сводка / Таблица» */
+.page-tools .vb-xlsx{ margin-left:8px; }
+.page-tools .vb-xlsx:disabled{ opacity:.5; }

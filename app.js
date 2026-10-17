@@ -583,6 +583,79 @@
   /* ================= ГЛАВНАЯ ================= */
   const ICON_NUMS = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19.5V12M10.5 19.5V5M16 19.5v-5M20.5 19.5h-17"/></svg>`;
   const ICON_TABLE = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10"/></svg>`;
+  const ICON_DL = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5v10M7.5 10.5l4.5 4.5 4.5-4.5M5 19.5h14"/></svg>`;
+
+  /* ---------- выгрузка таблицы главной в Excel (ExcelJS): те же строки и разделы, что на экране ----------
+     фон цветной только у разделов; итоги и результаты — полужирные, остальное — обычное; тонкие линии между строками */
+  function dashMonthRows() {
+    const per = periodOf("month"), o = C.orgMonth(S.projects, S.entries, S.month, S.org), byId = {};
+    o.per.forEach((x) => (byId[x.project.id] = x));
+    const projs = listProjects(per), fx = S.entries.filter((e) => e.kind === "org_expense" && C.inMonth(e.date, S.month));
+    const r = (label, v, cls) => ({ label, values: [v], total: v, cls });
+    const rows = [];
+    rows.push({ sec: "income", label: "поступления" }); projs.forEach((p) => rows.push(r(pl(p), (byId[p.id] || {}).income || 0))); rows.push(r("выручка до налогов", o.income, "is-sum"));
+    rows.push({ sec: "tax", label: "налоги" }); rows.push(r(`налоги · ${taxPct()} от выручки`, o.tax, "is-sum"));
+    rows.push({ sec: "salary", label: "зарплаты" }); listPeople(per).forEach((e) => rows.push(r(esc(C.fullName(e) || "без имени"), C.employeeMonth(e.id, S.entries, S.month).total))); rows.push(r("зарплаты всего", o.salaries, "is-sum"));
+    rows.push({ sec: "expense", label: "прочие расходы проектов" }); projs.forEach((p) => rows.push(r(pl(p), (byId[p.id] || {}).other || 0))); rows.push(r("итого", o.projOther, "is-sum"));
+    rows.push({ sec: "profit", label: "прибыль по проектам" }); projs.forEach((p) => rows.push(r(pl(p), (byId[p.id] || {}).profit || 0))); rows.push(r("итого по проектам", o.projectsProfit, "is-sum"));
+    rows.push({ sec: "fixed", label: "постоянные расходы" }); fixedTitles().forEach((t) => rows.push(r(esc(t), sumBy(fx.filter((e) => (e.title || "расход").trim() === t))))); rows.push(r("итого", o.fixed, "is-sum"));
+    rows.push(r("чистая прибыль", o.profit, "yt-total"));
+    return rows;
+  }
+  const loadScript = (src) => new Promise((res, rej) => { if ([...document.scripts].some((x) => x.src === src)) return res(); const sc = document.createElement("script"); sc.src = src; sc.onload = res; sc.onerror = () => rej(new Error("не загрузилась библиотека Excel")); document.head.appendChild(sc); });
+  const plain = (html) => { const t = document.createElement("div"); t.innerHTML = String(html); return t.textContent.replace(/\s+/g, " ").trim(); };
+  async function exportDashXlsx(btn) {
+    btn.disabled = true;
+    try {
+      await loadScript("https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js");
+      const year = viewOf("dash") === "year";
+      const rows = year ? dashYearRows() : dashMonthRows();
+      const heads = year ? [...C.MONTHS_COL, "ИТОГО"] : [C.monthLabel(S.month)];
+      const FONT = "Arial", LINE = "FFE6E6E6", SEC = "FFC4C4C4", MUTED = "FF8A8A8E", NEG = "FFD64545";
+      const tint = (rgb, a) => "FF" + rgb.split(",").map((c) => Math.round(+c * a + 255 * (1 - a)).toString(16).padStart(2, "0")).join("").toUpperCase();
+      const hasKop = !year && rows.some((r) => r.values && r.values.some((v) => v % 100));
+      // разделитель разрядов — по языку Excel (в русском — пробел); ноль — пустая ячейка, как на экране
+      const fmt = year ? '#,##0;-#,##0;""' : hasKop ? '#,##0.00 "₽";-#,##0.00 "₽";""' : '#,##0 "₽";-#,##0 "₽";""';
+      const wb = new window.ExcelJS.Workbook(); wb.creator = "sheetaet"; wb.created = new Date();
+      const ws = wb.addWorksheet(year ? yearOf() : C.monthLabel(S.month), { views: [{ state: "frozen", xSplit: 1, ySplit: 3, showGridLines: false }] });
+      const n = heads.length + 1;
+      ws.columns = [{ width: 36 }, ...heads.map((_, i) => ({ width: year && i === 12 ? 14 : year ? 12 : 18 }))];
+      const t = ws.getCell("A1"); t.value = `${S.org.name || "организация"} — ${year ? "таблица за " + yearOf() + " год" : "таблица за " + C.monthLabel(S.month)}`; t.font = { name: FONT, size: 14, bold: true };
+      const h = ws.getRow(3);
+      h.getCell(1).value = year ? "₽" : ""; heads.forEach((m, i) => (h.getCell(i + 2).value = m));
+      for (let c = 1; c <= n; c++) { const cell = h.getCell(c); cell.font = { name: FONT, size: 9, color: { argb: MUTED } }; cell.alignment = { horizontal: c === 1 ? "left" : "right", vertical: "middle" }; cell.border = { bottom: { style: "thin", color: { argb: LINE } } }; }
+      h.height = 20;
+      let ri = 4;
+      rows.forEach((r, k) => {
+        const row = ws.getRow(ri++);
+        if (r.sec) {
+          // раздел: единственное место с цветным фоном, сверху — линия заметнее
+          row.getCell(1).value = r.label;
+          for (let c = 1; c <= n; c++) { const cell = row.getCell(c); cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: tint(K[r.sec], 0.26) } }; cell.font = { name: FONT, size: 10 }; if (k) cell.border = { top: { style: "thin", color: { argb: SEC } } }; cell.alignment = { vertical: "middle" }; }
+          row.height = 20; return;
+        }
+        const bold = /is-sum|yt-total|yt-profit/.test(r.cls || "");
+        row.getCell(1).value = plain(r.label);
+        r.values.forEach((v, i) => (row.getCell(i + 2).value = r.pct ? (v == null ? null : v / 100) : v ? Math.round(v) / 100 : null));
+        if (year) row.getCell(n).value = r.pct ? (r.total == null ? null : r.total / 100) : r.total ? Math.round(r.total) / 100 : null;
+        for (let c = 1; c <= n; c++) {
+          const cell = row.getCell(c);
+          cell.font = { name: FONT, size: 11, bold };
+          cell.border = { bottom: { style: "thin", color: { argb: LINE } } };
+          cell.alignment = { horizontal: c === 1 ? "left" : "right", vertical: "middle" };
+          if (c > 1) { cell.numFmt = r.pct ? '0.0%;-0.0%;""' : fmt; if (typeof cell.value === "number" && cell.value < 0) cell.font = { name: FONT, size: 11, bold, color: { argb: NEG } }; }
+        }
+        row.height = 18;
+      });
+      const buf = await wb.xlsx.writeBuffer();
+      const url = URL.createObjectURL(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      const a = document.createElement("a"); a.href = url; a.download = `sheetaet-${S.slug}-${year ? yearOf() : S.month}.xlsx`; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast("таблица скачана");
+    } catch (e) { toast("не получилось: " + e.message); }
+    btn.disabled = false;
+  }
+
   // итоги организации за год — та же форма, что у месяца (orgMonth), для «Сводки» по году
   function orgYearTotal(year) {
     const ms = C.orgYear(S.projects, S.entries, year, S.org);
@@ -594,7 +667,8 @@
   function renderDashboard(main) {
     // переключатель «главные цифры / таблица» — иконки справа от заголовка страницы
     // «Сводка / Таблица» — сразу справа от заголовка; на телефоне только иконки, на компьютере иконка + название
-    $("#page-tools").innerHTML = `<button class="view-btn ${S.dashTab === "nums" ? "is-on" : ""}" data-tab="nums" title="Сводка" aria-label="Сводка">${ICON_NUMS}<span class="vb-label">Сводка</span></button><button class="view-btn ${S.dashTab === "table" ? "is-on" : ""}" data-tab="table" title="Таблица" aria-label="Таблица">${ICON_TABLE}<span class="vb-label">Таблица</span></button>`;
+    $("#page-tools").innerHTML = `<button class="view-btn ${S.dashTab === "nums" ? "is-on" : ""}" data-tab="nums" title="Сводка" aria-label="Сводка">${ICON_NUMS}<span class="vb-label">Сводка</span></button><button class="view-btn ${S.dashTab === "table" ? "is-on" : ""}" data-tab="table" title="Таблица" aria-label="Таблица">${ICON_TABLE}<span class="vb-label">Таблица</span></button>${S.dashTab === "table" ? `<button class="view-btn vb-xlsx" data-xlsx title="Скачать в Excel" aria-label="Скачать в Excel">${ICON_DL}<span class="vb-label">Excel</span></button>` : ""}`;
+    const xb = $("#page-tools [data-xlsx]"); if (xb) xb.onclick = () => exportDashXlsx(xb);
     $$("#page-tools [data-tab]").forEach((b) => (b.onclick = () => { S.dashTab = b.dataset.tab; localStorage.setItem("sheetaet_dash", S.dashTab); renderDashboard(main); }));
     // «год / месяц» — один переключатель для «Сводки» и «Таблицы»
     const yearMode = viewOf("dash") === "year";

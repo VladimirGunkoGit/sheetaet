@@ -814,6 +814,7 @@
     const p = projById(S.id); if (!p) { go("projects", null, { replace: true }); return; }
     main.innerHTML = `<div class="taskcard scroll sh-card" id="pcard">
       <div class="proj-head sh-head"><button class="proj-emoji-btn" data-emoji>${esc(p.emoji || "📁")}</button><div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="Новый проект" id="p-name">${esc(p.name || "")}</div></div>
+      <div class="sh-fullname" contenteditable="true" data-placeholder="Полное название организации" id="p-full">${esc(p.full_name || "")}</div>
       <div class="taskcard-meta sh-meta"><button class="status-slot" data-status>${statusPill(p.status)}</button>
         <button class="meta-pill ${p.start_date ? "" : "is-empty"}" data-d="start_date"><span class="meta-cap">договор с</span>${p.start_date ? fmtD(p.start_date) : ""}</button>
         <button class="meta-pill ${p.end_date || p.open_ended ? "" : "is-empty"}" data-d="end_date"><span class="meta-cap">до</span>${p.open_ended ? "бессрочно" : p.end_date ? fmtD(p.end_date) : ""}</button>
@@ -831,6 +832,11 @@
     const saveName = dbg(async () => { p.name = $("#p-name").innerText.trim(); await safe(() => DB.update("projects", p.id, { name: p.name })); }, 500);
     const saveNote = dbg(async () => { p.note = $("#p-note").innerText; await safe(() => DB.update("projects", p.id, { note: p.note })); }, 600);
     $("#p-name").oninput = saveName; $("#p-note").oninput = saveNote;
+    // полное название организации — только для себя, необязательное, ни на что не влияет
+    const full = $("#p-full");
+    full.oninput = dbg(async () => { const v = full.innerText.replace(/\s+/g, " ").trim(); if (!v) full.innerHTML = ""; p.full_name = v || null; await safe(() => DB.update("projects", p.id, { full_name: p.full_name })); }, 500);
+    full.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); full.blur(); } };
+    full.onpaste = (e) => { e.preventDefault(); document.execCommand("insertText", false, (e.clipboardData || window.clipboardData).getData("text").replace(/\s+/g, " ")); };
     $("[data-emoji]", card).onclick = async () => { const em = await pickEmoji(p.emoji); if (!em) return; p.emoji = em; await safe(() => DB.update("projects", p.id, { emoji: em })); renderProject(main); };
     $("[data-status]", card).onclick = async () => { const k = await pickStatus(p.status); if (!k) return; const prev = p.status; p.status = k; await safe(() => DB.update("projects", p.id, { status: k })); pushUndo("статус", () => DB.update("projects", p.id, { status: (p.status = prev) })); renderProject(main); };
     $("[data-color]", card).onclick = async () => { const c = await pickColor(p.color); if (!c) return; p.color = c; await safe(() => DB.update("projects", p.id, { color: c })); renderProject(main); };

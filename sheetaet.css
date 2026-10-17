@@ -781,3 +781,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 .st-opt.st-plan{ color:var(--muted); }
 .st-opt.st-late{ color:rgba(232,90,90,.6); }
 .st-menu-note{ font-size:11px; color:var(--muted); padding:4px 10px 2px; }
+/* план — на 25% прозрачнее серого */
+:root{ --plan-c: rgba(255,255,255,.34); }
+[data-theme="light"]{ --plan-c: rgba(0,0,0,.3); }
+.yt tr td.st-plan, .yt tr.is-sum td.st-plan, .yt tr.yt-total td.st-plan, .yt tr.yt-profit td.st-plan, .yt tr.yt-pct td.st-plan{ color:var(--plan-c); }
+.st-opt.st-plan{ color:var(--plan-c); }

@@ -581,6 +581,28 @@
     return keys.map((k) => S.entries.filter((e) => C.inMonth(e.date, k) && r.of(e)));
   }
   const newStatus = (date) => (date <= C.todayStr() ? "done" : "plan");
+  /* Расчёт только по «готово». Строки таблицы считаются дважды: по всем записям (вид и состав строк) и только по «готово».
+     Ячейка: есть хотя бы одна запись «готово» → значение по «готово» (план и опоздания не считаются);
+     одни планы/опоздания → теоретическое значение по ним, цветом плана (или опоздания). То же для итогов, налогов и прибыли. */
+  function statusRows(build) {
+    const all = build(), keys = C.monthsOfYear(yearOf()), keep = S.entries;
+    S.entries = keep.filter((e) => effStatus(e) === "done");
+    let done; try { done = build(); } finally { S.entries = keep; }
+    const keyOf = (sec, r) => `${sec}|${r.label}|${r.cls || ""}|${r.pct ? "%" : ""}|${r.edit ? JSON.stringify({ ...r.edit, slot: undefined }) : ""}`;
+    const idx = new Map(); let sec = "";
+    done.forEach((r) => { if (r.sec) { sec = r.sec; return; } const k = keyOf(sec, r); if (!idx.has(k)) idx.set(k, r); });
+    sec = "";
+    all.forEach((r) => {
+      if (r.sec) { sec = r.sec; return; }
+      const lists = cellLists(r, keys); if (!lists) return;
+      if (r.cellIds) { r.st = lists.map((l) => cellSt(l)); return; }   // ячейка = одна запись: её сумма и её статус
+      const d = idx.get(keyOf(sec, r));
+      r.st = lists.map((l) => (l.some((e) => effStatus(e) === "done") ? "done" : cellSt(l)));
+      r.values = r.values.map((v, i) => (r.st[i] === "done" ? (d ? d.values[i] : 0) : v));
+      if (!r.pct) r.total = r.values.reduce((s2, v) => s2 + (v || 0), 0);
+    });
+    return all;
+  }
 
   /* ---------- годовая таблица: 12 одинаковых колонок (без суммы за год) ---------- */
   // rows: {label, values[12], total, cls, open, page, pct} | {sec: kindKey, label}
@@ -602,7 +624,7 @@
       if (r.sec) return `<tr class="yt-sec${fs.has(foldId(r.sec)) ? " is-folded" : ""}" style="--c:${K[r.sec]}"><td class="yt-l">${foldBtn(r.sec)}<span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span>${r.add ? `<button class="sec-add" data-secadd="${esc(JSON.stringify(r.add))}" aria-label="Добавить строку" title="добавить">${PLUS_TINY}</button>` : ""}</td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}</tr>`;
       const ed = r.edit ? ` data-edit="${esc(JSON.stringify(r.edit))}"` : "";
       const lists = cellLists(r, keys);
-      const stc = (i) => { if (!lists) return ""; const st = cellSt(lists[i]); return st ? ` st-${st}` : ""; };
+      const stc = (i) => { const st = r.st ? r.st[i] : lists ? cellSt(lists[i]) : null; return st ? ` st-${st}` : ""; };
       const ida = (i) => (lists && lists[i].length ? ` data-ids="${lists[i].map((e) => e.id).join(",")}"` : "");
       return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${curD(i)}${stc(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}${r.cellIds && r.cellIds[i] ? ` data-eid="${r.cellIds[i]}"` : ""}${ida(i)}>${cell(r, v)}</td>`).join("")}</tr>`;
     }).join("");
@@ -863,7 +885,7 @@
     try {
       await loadScript("https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js");
       const year = viewOf("dash") === "year";
-      const rows = year ? dashYearRows() : dashMonthRows();
+      const rows = year ? statusRows(dashYearRows) : dashMonthRows();
       const heads = year ? [...C.MONTHS_COL] : [C.monthLabel(S.month)];
       const FONT = "Arial", LINE = "FFE6E6E6", SEC = "FFC4C4C4", MUTED = "FF8A8A8E", NEG = "FFD64545";
       const tint = (rgb, a) => "FF" + rgb.split(",").map((c) => Math.round(+c * a + 255 * (1 - a)).toString(16).padStart(2, "0")).join("").toUpperCase();
@@ -898,7 +920,7 @@
           cell.border = { bottom: { style: "thin", color: { argb: LINE } } };
           cell.alignment = { horizontal: c === 1 ? "left" : "right", vertical: "middle" };
           // статус как на экране: план — серым, опоздание — бледно-красным, готово — обычным
-          const st = lists && c > 1 ? cellSt(lists[c - 2]) : null;
+          const st = c > 1 ? (r.st ? r.st[c - 2] : lists ? cellSt(lists[c - 2]) : null) : null;
           if (c > 1) { cell.numFmt = r.pct ? '0.0%;-0.0%;""' : fmt; const color = st === "late" ? "FFE89A9A" : st === "plan" ? MUTED : typeof cell.value === "number" && cell.value < 0 ? NEG : null; if (color) cell.font = { name: FONT, size: 11, bold, color: { argb: color } }; }
         }
         row.height = 18;
@@ -947,7 +969,7 @@
     wireMonthBar(main);
     const body = $("#dash-body", main);
     const rb = remindBanner(); if (rb) { body.insertAdjacentHTML("beforebegin", rb); wireRemindBanner(main, () => renderDashboard(main)); }
-    if (S.dashTab === "table") { body.innerHTML = yearGrid(dashYearRows()); wireYearGrid(body, "dash"); return; }
+    if (S.dashTab === "table") { body.innerHTML = yearGrid(statusRows(dashYearRows)); wireYearGrid(body, "dash"); return; }
     if (S.dashTab === "table") { body.innerHTML = dashTable(cur); $$("[data-open]", body).forEach((r) => (r.onclick = () => go(r.dataset.page, r.dataset.open))); wireFold(body); return; }
     const prevName = yearMode ? py + (midYear ? " (янв–" + C.MONTHS_SHORT[+todayKey.slice(5) - 1] + ")" : " году") : C.monthPrep(prevKey);
     const tiles = [
@@ -1251,7 +1273,7 @@
   }
   function renderProjectTables(p) {
     const box = $("#p-tables"); if (!box) return;
-    if (viewOf("project") === "year") { box.innerHTML = yearGrid(projectYearRows(p)); wireYearGrid(box, "project", () => renderProjectTables(p)); return; }
+    if (viewOf("project") === "year") { box.innerHTML = yearGrid(statusRows(() => projectYearRows(p))); wireYearGrid(box, "project", () => renderProjectTables(p)); return; }
     const m = pm(p);
     const src = S.entries.filter((e) => e.project_id === p.id && C.inMonth(e.date, C.addMonths(S.month, -1)));
     box.innerHTML = `
@@ -1438,6 +1460,7 @@
   function renderEmployeeBody(e, yearMode) {
     const box = $("#e-body"); if (!box) return;
     if (yearMode) {
+      const build = () => {
       const year = yearOf(), ms = C.monthsOfYear(year);
       const sal = S.entries.filter((x) => x.kind === "salary" && x.employee_id === e.id && x.date.startsWith(year));
       const pids = [...new Set([...projectsOf(e.id), ...sal.map((x) => x.project_id)])].map(projById).filter((p) => p && (!p.archived || sal.some((x) => x.project_id === p.id))).sort((a, b) => a.name.localeCompare(b.name, "ru"));
@@ -1445,7 +1468,9 @@
       rows.push(yRow("без проекта", ms.map((k) => sumBy(sal.filter((x) => !x.project_id && C.inMonth(x.date, k)))), { edit: { kind: "salary", project_id: null, employee_id: e.id }, of: (x) => x.kind === "salary" && x.employee_id === e.id && !x.project_id }));
       pids.forEach((p) => rows.push(yRow(pl(p), ms.map((k) => sumBy(sal.filter((x) => x.project_id === p.id && C.inMonth(x.date, k)))), { open: p.id, page: "projects", edit: { kind: "salary", project_id: p.id, employee_id: e.id }, of: (x) => x.kind === "salary" && x.employee_id === e.id && x.project_id === p.id })));
       rows.push(yRow("итого", ms.map((k) => sumBy(sal.filter((x) => C.inMonth(x.date, k)))), { cls: "is-sum", of: (x) => x.kind === "salary" && x.employee_id === e.id }));
-      box.innerHTML = yearGrid(rows); wireYearGrid(box, "employee", () => renderEmployeeBody(e, true)); return;
+        return rows;
+      };
+      box.innerHTML = yearGrid(statusRows(build)); wireYearGrid(box, "employee", () => renderEmployeeBody(e, true)); return;
     }
     const mon = C.employeeMonth(e.id, S.entries, S.month);
     const pids = [...new Set([...projectsOf(e.id), ...mon.list.map((x) => x.project_id)])].map(projById).filter((p) => p && (!p.archived || mon.list.some((x) => x.project_id === p.id))).sort((a, b) => a.name.localeCompare(b.name, "ru"));
@@ -1555,7 +1580,7 @@
     </div>`;
     const box = $("#o-fixed");
     const draw = () => {
-      if (viewOf("org") === "year") { box.innerHTML = yearGrid(orgYearRows()); wireYearGrid(box, "org", draw); return; }
+      if (viewOf("org") === "year") { box.innerHTML = yearGrid(statusRows(orgYearRows)); wireYearGrid(box, "org", draw); return; }
       const l = S.entries.filter((x) => x.kind === "org_expense" && C.inMonth(x.date, S.month)).sort((a, b) => a.date.localeCompare(b.date)).concat(S.drafts.filter((d) => d.kind === "org_expense" && C.inMonth(d.date, S.month)));
       box.innerHTML = `${entrySection("org_expense", l, "постоянный расход")}${prevList.length ? `<div class="pane-head-tools ent-copy"><button class="chip" data-copy>скопировать из прошлого месяца</button></div>` : ""}`;
       wireEntries(box, null, draw);

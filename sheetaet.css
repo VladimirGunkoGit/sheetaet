@@ -628,3 +628,9 @@
 .yt-input{ width:100%; height:calc(100% - 6px); min-width:0; border:none; border-radius:5px; background:var(--field-bg); color:var(--fg);
   font:inherit; font-weight:400; text-align:right; padding:0 6px; font-variant-numeric:tabular-nums; outline:1px solid var(--rule-sec); }
 .yt-input:focus{ outline:1px solid var(--fg); }
+
+/* v9: у полей ввода нигде нет обводки — ни в покое, ни при вводе; поле обозначает только фон */
+input, textarea, select, [contenteditable], .field, .yt-input,
+input:focus, textarea:focus, select:focus, [contenteditable]:focus, .field:focus, .yt-input:focus,
+input:focus-visible, textarea:focus-visible, select:focus-visible, [contenteditable]:focus-visible{ outline:none !important; box-shadow:none !important; }
+.field, .yt-input{ border:none; }

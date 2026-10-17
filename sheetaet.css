@@ -650,3 +650,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 .sh-fullname:empty::before{ content:attr(data-placeholder); color:var(--muted); opacity:.55; }
 /* окно нового статуса: предпросмотр плашки */
 .statusform-preview{ display:flex; justify-content:center; padding:2px 0 4px; }
+/* календарь: постоянная ширина окна — стрелки и заголовок не сдвигаются при листании */
+.cal-card{ width:min(340px, 92vw); }
+@media (min-width:860px){ .cal-card{ width:min(374px, 92vw); } }

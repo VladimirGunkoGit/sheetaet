@@ -162,6 +162,8 @@
         const off = (new Date(y, mo, 1).getDay() + 6) % 7, days = new Date(y, mo + 1, 0).getDate(), t = C.todayStr();
         let h = ""; for (let i = 0; i < off; i++) h += `<span class="cal-day empty"></span>`;
         for (let d = 1; d <= days; d++) { const ds = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`; h += `<button class="cal-day ${ds === t ? "today" : ""} ${ds === value ? "sel" : ""}" data-d="${ds}">${d}</button>`; }
+        // всегда 6 недель: высота окна одинаковая для любого месяца — стрелки не уезжают из-под курсора
+        for (let i = off + days; i < 42; i++) h += `<span class="cal-day empty"></span>`;
         $(".cal-grid", m).innerHTML = h;
         $$("[data-d]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(b.dataset.d); }));
       };

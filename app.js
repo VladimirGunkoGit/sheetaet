@@ -567,6 +567,7 @@
   }
   function effStatus(e) {
     const t = C.todayStr(), st = e.status || (e.date <= t ? "done" : "plan");
+    if (st === "late") return "late";   // поставлено вручную
     if (st === "plan" && addDays(e.date, graceOf(e)) < t) return "late";
     return st;
   }
@@ -652,6 +653,15 @@
     // главная: новый проект / новый сотрудник — создаём и открываем карточку (там поступления, выплаты и прочее)
     if (a.kind === "new-project") { const n = await inputBox({ title: "новый проект", placeholder: "название" }); if (!n || !n.trim()) return; const p = await createProject(n.trim()); go("projects", p.id); return; }
     if (a.kind === "new-person") { const n = await inputBox({ title: "новый сотрудник", placeholder: "Фамилия Имя Отчество" }); if (!n || !n.trim()) return; const e = await createEmployee(n.trim(), true); go("team", e.id); return; }
+    if (a.kind === "project-expense") {
+      const pid = await pickProject([], "расход какого проекта"); if (!pid) return;
+      const t = await inputBox({ title: "новый расход", placeholder: "сервер, реклама, техника…" }); if (!t || !t.trim()) return;
+      const mk = S.month.slice(0, 4) === yearOf() ? S.month : yearOf() + "-01";
+      const v = await inputBox({ title: t.trim(), sub: `${(projById(pid) || {}).name || ""} · ${C.monthLabel(mk)}`, money: true, placeholder: "сумма", okLabel: "Добавить" }); if (v == null) return;
+      const amt = C.parseAmount(v); if (!amt) return toast("не похоже на сумму");
+      await createEntry({ kind: "expense", project_id: pid, employee_id: null, title: t.trim(), amount_minor: amt, date: C.dayInMonth(mk, 15) });
+      redraw(); return;
+    }
     if (a.kind === "expense" || a.kind === "org_expense" || a.kind === "income") {
       const t = await inputBox({ title: a.kind === "income" ? "новое поступление" : a.kind === "expense" ? "новый расход" : "новый постоянный расход", value: a.kind === "income" ? INCOME_NEW : "", placeholder: a.kind === "income" ? "название" : a.kind === "expense" ? "сервер, реклама, техника…" : "офис, бухгалтер, банк…" });
       if (!t || !t.trim()) return; const title = t.trim();
@@ -668,7 +678,7 @@
     redraw();
     // открыть ячейку выбранного месяца (или января, если смотрим другой год) у новой строки
     const mk = S.month.slice(0, 4) === yearOf() ? S.month : yearOf() + "-01";
-    const tr = $$("tr[data-edit]", root).find((r) => { const x = JSON.parse(r.dataset.edit); return x.kind === spec.kind && (x.project_id || null) === (spec.project_id || null) && (x.employee_id || null) === (spec.employee_id || null) && (x.title || null) === (spec.title || null); });
+    const tr = $$("#main tr[data-edit]").find((r) => { /* после перерисовки ищем в новой таблице */ const x = JSON.parse(r.dataset.edit); return x.kind === spec.kind && (x.project_id || null) === (spec.project_id || null) && (x.employee_id || null) === (spec.employee_id || null) && (x.title || null) === (spec.title || null); });
     const td = tr && $(`td[data-mk="${mk}"]`, tr); if (td) { td.scrollIntoView({ block: "nearest", inline: "center" }); td.click(); }
   }
   // переименовать строку (поступление, расход, постоянный расход): меняется название у всех её сумм
@@ -696,7 +706,8 @@
     menu.innerHTML = `<div class="st-menu-title">статус${list.length > 1 ? ` · ${list.length} ${C.plural(list.length, "запись", "записи", "записей")}` : ""}</div>
       <button class="st-opt st-done ${st === "done" ? "is-on" : ""}" data-st="done">готово</button>
       <button class="st-opt st-plan ${st === "plan" ? "is-on" : ""}" data-st="plan">план</button>
-      ${late.length ? `<div class="st-opt st-late is-on is-info">опоздание · с ${C.dayLong(lateSince(late[0]))}</div>` : ""}`;
+      <button class="st-opt st-late ${st === "late" ? "is-on" : ""}" data-st="late">опоздание</button>
+      ${late.length && late.every((e) => e.status !== "late") ? `<div class="st-menu-note">опоздание поставлено само · с ${C.dayLong(lateSince(late[0]))}</div>` : ""}`;
     document.body.appendChild(menu);
     const r = menu.getBoundingClientRect();
     menu.style.left = Math.max(8, Math.min(x, innerWidth - r.width - 8)) + "px";
@@ -708,7 +719,7 @@
       menu.remove(); document.removeEventListener("pointerdown", off, true);
       for (const e of list) { e.status = v; await safe(() => DB.update("entries", e.id, { status: v })); }
       pushUndo("статус", async () => { for (const [e, s0] of prev) { e.status = s0; await DB.update("entries", e.id, { status: s0 }); } });
-      toast(v === "done" ? "отмечено: готово" : "отмечено: план"); redraw();
+      toast("отмечено: " + ST_LABEL[v]); redraw();
     }));
   }
   function wireStatusMenu(root, redraw) {
@@ -996,12 +1007,13 @@
     rows.push({ sec: "salary", label: "зарплаты", add: { kind: "new-person" } });
     listPeople(per).forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => C.employeeMonth(e.id, S.entries, k).total), { open: e.id, page: "team", of: (x) => sal(x) && x.employee_id === e.id })));
     rows.push(yRow("зарплаты всего", sumOrg("salaries"), { cls: "is-sum", of: sal }));
-    rows.push({ sec: "expense", label: "прочие расходы проектов" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "other"), { ...open(p), of: (e) => exp(e) && e.project_id === p.id })));
+    rows.push({ sec: "expense", label: "прочие расходы проектов", add: { kind: "project-expense" } }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "other"), { ...open(p), of: (e) => exp(e) && e.project_id === p.id })));
     rows.push(yRow("итого", sumOrg("projOther"), { cls: "is-sum", of: exp }));
     rows.push({ sec: "profit", label: "прибыль по проектам" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "profit"), { ...open(p), of: (e) => e.project_id === p.id })));
     rows.push(yRow("итого по проектам", sumOrg("projectsProfit"), { cls: "is-sum", of: (e) => !!e.project_id }));
-    rows.push({ sec: "fixed", label: "постоянные расходы" });
-    fixedTitles().forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(fx.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))), { of: (e) => fxd(e) && (e.title || "расход").trim() === t })));
+    rows.push({ sec: "fixed", label: "постоянные расходы", add: { kind: "org_expense" } });
+    // постоянные расходы правятся прямо здесь, как на странице организации
+    [...new Set([...fixedTitles(), ...extraTitles("fix")])].forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(fx.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))), { of: (e) => fxd(e) && (e.title || "расход").trim() === t, edit: { kind: "org_expense", project_id: null, title: t } })));
     rows.push(yRow("итого", sumOrg("fixed"), { cls: "is-sum", of: fxd }));
     rows.push(yRow("чистая прибыль", sumOrg("profit"), { cls: "yt-total", of: () => true }));
     return rows;

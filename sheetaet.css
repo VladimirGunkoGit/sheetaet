@@ -775,3 +775,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 .sh-card--nav{ padding-bottom:calc(var(--safe-bottom) + 32px); }
 @media (min-width:860px){ .icon-btn--sm svg{ width:19px; height:19px; } }
 .page-title.is-name{ text-transform:none; }
+/* меню статуса: все пункты одного начертания, различаются только цветом; выбранный — фоном */
+.st-opt, .st-opt.is-on{ font-weight:400; }
+.st-opt.st-done{ color:var(--fg); }
+.st-opt.st-plan{ color:var(--muted); }
+.st-opt.st-late{ color:rgba(232,90,90,.6); }
+.st-menu-note{ font-size:11px; color:var(--muted); padding:4px 10px 2px; }

@@ -521,3 +521,68 @@
 @media (max-width:767px){ .yt-block .yt{ width:1250px; } .yt-block col.yt-c-l{ width:158px; } }
 /* название раздела не обрезается — плашка может выйти на полосу */
 .yt tr.yt-sec td.yt-l{ overflow:visible; z-index:4; }
+
+/* ================= ПРАВКИ v5 — единые таблицы (решения из тестовой таблицы) =================
+   • между строками — тонкие почти прозрачные линии; между разделами — линия заметнее (не чёрная);
+   • раздел обозначает только маленькая цветная плашка, без цветной полосы;
+   • текущий месяц — едва заметная заливка, без обводки; строки не подсвечиваются цветом;
+   • все цифры обычным начертанием, итоги и ключевые суммы — полужирным. */
+:root{ --rule: rgba(255,255,255,.065); --rule-sec: rgba(255,255,255,.22); --cur-t: rgba(255,255,255,.04); }
+[data-theme="light"]{ --rule: rgba(0,0,0,.07); --rule-sec: rgba(0,0,0,.18); --cur-t: rgba(0,0,0,.028); }
+
+/* ---- годовая таблица ---- */
+.yt td, .yt th{ font-weight:400; }
+.yt tr + tr td, .yt tbody tr:first-child td{ border-top:0; }
+.yt tbody td{ border-bottom:1px solid var(--rule); background:var(--bg); background-clip:border-box; }
+.yt tbody tr:has(+ tr.yt-sec) td, .yt tbody tr:last-child td{ border-bottom-color:transparent; }
+.yt tr[data-open]:hover td, .yt tr[data-open]:hover .yt-l,
+.yt tr.is-sum td, .yt tr.yt-total td, .yt tr.is-sum .yt-l, .yt tr.yt-total .yt-l,
+[data-theme] .yt tr.is-sum .yt-l, [data-theme] .yt tr.yt-total .yt-l{ background:var(--bg); }
+.yt tr.is-sum td, .yt tr.yt-total td, .yt tr.yt-profit td{ font-weight:600; color:var(--fg); }
+.yt tr.is-sum td:first-child, .yt tr.yt-total td:first-child, .yt tr.is-sum td:last-child, .yt tr.yt-total td:last-child{ border-radius:0; }
+/* текущий месяц: только едва заметная заливка */
+.yt td.is-cur, .yt th.is-cur, .yt tr td.is-cur, .yt tr.yt-sec td.is-cur{ background:linear-gradient(var(--cur-t), var(--cur-t)), var(--bg); background-clip:border-box; }
+.yt td.is-cur::after, .yt th.is-cur::after{ content:none; }
+/* раздел: линия сверху, под ней маленькая цветная плашка; полосы нет */
+.yt tr.yt-sec td, .yt tr.yt-sec td.yt-l, [data-theme] .yt tr.yt-sec td.yt-l{ background:var(--bg); border:0; border-top:1px solid var(--rule-sec); border-radius:0; padding:16px 0 8px; height:auto; background-clip:border-box; }
+.yt tr.yt-sec td.yt-l{ padding-left:0; }
+.yt tr.yt-sec td.is-cur{ background:linear-gradient(var(--cur-t), var(--cur-t)), var(--bg); }
+.yt tbody tr.yt-sec:first-child td{ border-top:0; padding-top:4px; }
+.yt tr.yt-sec .k-pill{ background:rgba(var(--c), .26); }
+/* правка ячейки: только тонкая рамка под курсором */
+.yt tr.is-edit td[data-mk]:hover{ box-shadow:inset 0 0 0 1px var(--rule-sec); }
+
+/* ---- месячная таблица главной ---- */
+.dt-row, .dt-row.is-sum, .dt-total{ background:transparent; border-radius:0; margin:0; padding:7px 10px; border-bottom:1px solid var(--rule); font-weight:400; }
+.dt-row:has(+ .dt-sec), .dash-table > .dt-row:last-child{ border-bottom-color:transparent; }
+.dt-row[data-open]:hover{ background:transparent; }
+.dt-row.is-sum .dt-l, .dt-row.is-sum .dt-v, .dt-total .dt-l, .dt-total .dt-v{ font-weight:600; color:var(--fg); }
+.dt-l{ font-weight:400; }
+
+/* ---- заголовок раздела (проект, сотрудник, организация, месячная главная): плашка + сумма, без полосы ---- */
+.ent-head, .dt-sec.ent-head, .emp-month.ent-head{ background:transparent; border-radius:0; padding:0 0 6px; margin:0; border:0; }
+.ent-head .k-pill{ background:rgba(var(--c), .26); }
+.ent-sum{ font-weight:600; color:var(--fg); }
+.dt-sec.ent-head{ border-top:1px solid var(--rule-sec); padding-top:16px; margin-top:4px; }
+.dash-table > .dt-sec:first-child{ border-top:0; padding-top:0; margin-top:0; }
+
+/* ---- строки проекта / организации / сотрудника ---- */
+.ent-sec{ margin-top:0; padding-top:16px; }
+.ent-sec + .ent-sec, .ent-gap + .ent-sec{ border-top:1px solid var(--rule-sec); }
+.ent-gap{ display:none; }
+.ent .swipe-row.ent-row{ border-bottom:1px solid var(--rule); }
+.ent-amt, .ent-title, .ent-who{ font-weight:400; }
+.ent-auto{ border-bottom:1px solid var(--rule); padding:8px 2px; }
+.ent-total{ background:transparent; border-radius:0; margin-top:16px; padding:12px 2px; border-top:1px solid var(--rule-sec); font-weight:600; color:var(--fg); }
+.ent-profit{ background:transparent; border-radius:0; margin-top:0; padding:12px 2px 4px; border-top:1px solid var(--rule); }
+.ent-profit-num{ font-family:var(--font-body); font-size:var(--fs-body); font-weight:600; }
+.ent-profit-num .mk{ font-size:inherit; }
+.emp-pay-row .swipe-row.emp-pay{ border-bottom:1px solid var(--rule); border-radius:0; }
+.emp-pay-row .swipe-row.emp-pay:hover{ background:transparent; }
+.emp-pay-sum{ font-weight:400; }
+/* список сотрудников */
+.emp .swipe-row.emp-row{ border-bottom:1px solid var(--rule); }
+.emp-sum{ font-weight:400; }
+.emp-total{ background:transparent; border-radius:0; border-top:1px solid var(--rule-sec); margin-top:12px; padding:12px 10px; font-weight:600; color:var(--fg); }
+@media (min-width:860px){ .dt-row, .dt-row.is-sum, .dt-total{ padding:7.5px 11px; } .ent-profit-num{ font-size:var(--fs-body); } }
+.yt--head th, .yt--head th.yt-l{ border-bottom:1px solid var(--rule); }

@@ -595,7 +595,7 @@
     h += sec("salary", "зарплаты") + people.map((e) => row(esc(C.fullName(e) || "без имени"), C.employeeMonth(e.id, S.entries, S.month).total, { open: e.id, page: "team" })).join("") + row("зарплаты всего", o.salaries, { cls: "is-sum" });
     h += sec("expense", "прочие расходы проектов") + projs.map((p) => row(pl(p), (byId[p.id] || {}).other || 0, open(p))).join("") + row("итого", o.projOther, { cls: "is-sum" });
     h += sec("profit", "прибыль по проектам") + projs.map((p) => row(pl(p), (byId[p.id] || {}).profit || 0, open(p))).join("") + row("итого по проектам", o.projectsProfit, { cls: "is-sum" });
-    h += sec("fixed", "постоянные расходы организации") + fixedTitles().map((t) => row(esc(t), sumBy(fx.filter((e) => (e.title || "расход").trim() === t)))).join("") + row("итого", o.fixed, { cls: "is-sum" });
+    h += sec("fixed", "постоянные расходы") + fixedTitles().map((t) => row(esc(t), sumBy(fx.filter((e) => (e.title || "расход").trim() === t)))).join("") + row("итого", o.fixed, { cls: "is-sum" });
     h += `<div class="dt-row dt-total"><span class="dt-l">чистая прибыль</span><span class="dt-v ${o.profit < 0 ? "is-neg" : ""}">${fm(o.profit)}</span></div>`;
     return h + `</div>`;
   }
@@ -617,7 +617,7 @@
     rows.push(yRow("итого", sumOrg("projOther"), { cls: "is-sum" }));
     rows.push({ sec: "profit", label: "прибыль по проектам" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "profit"), open(p))));
     rows.push(yRow("итого по проектам", sumOrg("projectsProfit"), { cls: "is-sum" }));
-    rows.push({ sec: "fixed", label: "постоянные расходы организации" });
+    rows.push({ sec: "fixed", label: "постоянные расходы" });
     fixedTitles().forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(fx.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))))));
     rows.push(yRow("итого", sumOrg("fixed"), { cls: "is-sum" }));
     rows.push(yRow("чистая прибыль", sumOrg("profit"), { cls: "yt-total" }));

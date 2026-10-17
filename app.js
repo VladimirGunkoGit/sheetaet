@@ -305,7 +305,16 @@
     route();
   }
   window.addEventListener("popstate", route);
-  function setMonth(key) { S.month = key; history.replaceState(history.state, "", urlFor(S.page, S.id)); render(); }
+  function setMonth(key) {
+    S.month = key; history.replaceState(history.state, "", urlFor(S.page, S.id));
+    const sc = $("#main .scroll, #main .sh-pane"), top = sc ? sc.scrollTop : 0;
+    render();
+    const sc2 = $("#main .scroll, #main .sh-pane"); if (sc2) sc2.scrollTop = top;
+  }
+  // телефон: таблица по году, видна одна колонка месяца; компьютер: весь год
+  const isMobile = () => window.matchMedia("(max-width: 767px)").matches;
+  let wasMobile = isMobile();
+  window.addEventListener("resize", () => { if (isMobile() !== wasMobile) { wasMobile = isMobile(); render(); } });
   // «назад» из карточки: туда, откуда пришли (главная, проект, сотрудник, архив…); если карточку открыли по ссылке — в список
   function goBack(fallback) { if (history.state && history.state.app) history.back(); else go(fallback != null ? fallback : S.page, null, { replace: true }); }
 
@@ -437,6 +446,7 @@
     else if (page === "team") renderTeam(main);
     else if (page === "org") renderOrg(main);
     else go("", null, { replace: true });
+    const st = $("#main .sh-month.is-sticky"); if (st) { const sc = st.closest(".sh-pane, .taskcard"); if (sc) st.style.top = -parseFloat(getComputedStyle(sc).paddingTop || 0) + "px"; }
   }
   $$("#page-nav .nav-item").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
   $("#brand-home").addEventListener("click", () => go(""));
@@ -482,12 +492,12 @@
   const pl = (p) => `<span class="proj-emoji">${esc(p.emoji || "📁")}</span> ${esc(p.name || "без названия")}`;
 
   /* ---------- шапка месяца/года: ‹ октябрь 2026 [14 ОКТ] › ---------- */
-  function monthBar(mode) {
+  function monthBar(mode, mnav) {
     const today = C.todayStr(), curKey = C.monthKey(today), isYear = mode === "year";
     const isCur = isYear ? yearOf() === curKey.slice(0, 4) : S.month === curKey;
     const step = isYear ? 12 : 1;
     // стрелки — вплотную по бокам от названия; «сегодня» — справа от правой стрелки, название остаётся строго по центру
-    return `<div class="cal-nav-row money-monthbar" data-step="${step}"><div class="mbar-center mbar-group">
+    return `<div class="cal-nav-row money-monthbar" data-step="${step}"${mnav ? " data-mnav" : ""}><div class="mbar-center mbar-group">
       <button class="cal-nav" data-mon="-${step}" aria-label="${isYear ? "Предыдущий год" : "Предыдущий месяц"}">‹</button>
       <span class="money-month-title">${isYear ? yearOf() : C.monthLabel(S.month)}${(isYear ? yearOf() > curKey.slice(0, 4) : S.month > curKey) ? `<span class="plan-tag">план</span>` : ""}</span>
       <button class="cal-nav" data-mon="${step}" aria-label="${isYear ? "Следующий год" : "Следующий месяц"}">›</button>
@@ -495,7 +505,7 @@
   }
   function wireMonthBar(root) {
     $$("[data-mon]", root).forEach((b) => (b.onclick = () => setMonth(+b.dataset.mon === 0 ? C.monthKey(C.todayStr()) : C.addMonths(S.month, +b.dataset.mon))));
-    const bar = $(".money-monthbar", root); if (!bar) return;
+    const bar = $(".money-monthbar", root); if (!bar || bar.dataset.mnav !== undefined) return;
     const step = +bar.dataset.step || 1;
     let sx = 0, sy = 0, on = false;
     bar.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; sy = e.touches[0].clientY; on = true; }, { passive: true });
@@ -509,11 +519,38 @@
   });
   // переключатель «месяц / год» — выбор помнится для каждого места
   // по умолчанию — год; кнопки одинаковые везде: «год» слева, «месяц» справа, под названием периода
-  const viewOf = (place) => localStorage.getItem("sheetaet_view_" + place) || "year";
-  function viewToggle(place) { const v = viewOf(place); return `<div class="view-toggle" data-place="${place}"><button class="chip ${v === "year" ? "is-on" : ""}" data-view="year">год</button><button class="chip ${v === "month" ? "is-on" : ""}" data-view="month">месяц</button></div>`; }
-  // шапка периода: ‹ название › и под ним переключатель «год / месяц»
-  const periodHead = (place, mode) => `<div class="sh-month">${monthBar(mode)}${place ? viewToggle(place) : ""}</div>`;
-  function wireViewToggle(root, rerender) { $$(".view-toggle [data-view]", root).forEach((b) => (b.onclick = () => { localStorage.setItem("sheetaet_view_" + b.parentElement.dataset.place, b.dataset.view); rerender(); })); }
+  // вид — только год (переключателя «год / месяц» больше нет). На телефоне год листается по месяцам стрелками
+  const viewOf = () => "year";
+  // шапка периода. kind: "grid" — страница с годовой таблицей (телефон: ‹ месяц › листает колонки, без перерисовки),
+  // "summary" — сводка (телефон: месяц, компьютер: год), "list" — список за месяц. На телефоне шапка закреплена сверху
+  const periodHead = (kind) => {
+    const m = isMobile();
+    const mode = kind === "list" || (m && kind !== "grid-year") ? "month" : "year";
+    return `<div class="sh-month${m ? " is-sticky" : ""}">${monthBar(mode, m && kind === "grid")}</div>`;
+  };
+  // телефон: стрелки и свайп двигают колонки годовой таблицы; страница не перерисовывается и не прыгает
+  function wireMonthNav(root) {
+    const bar = $("#main .money-monthbar[data-mnav]"), wrap = $(".yt-wrap", root); if (!bar || !wrap || !isMobile()) return;
+    const table = $("table", wrap), labelW = 150;
+    const colW = Math.max(120, wrap.clientWidth - labelW);
+    $$("col.yt-c-l", table).forEach((c) => (c.style.width = labelW + "px"));
+    $$("col.yt-c-m", table).forEach((c) => (c.style.width = colW + "px"));
+    table.style.width = labelW + 12 * colW + "px";
+    wrap.classList.add("is-mnav"); wrap.style.scrollPaddingLeft = labelW + "px";
+    const idx = () => +S.month.slice(5) - 1;
+    const title = () => { const t = $(".money-month-title", bar), cur = C.monthKey(C.todayStr()); t.innerHTML = esc(C.monthLabel(S.month)) + (S.month > cur ? `<span class="plan-tag">план</span>` : ""); $(".mbar-today", bar).classList.toggle("is-dim", S.month === cur); };
+    const show = (smooth) => wrap.scrollTo({ left: idx() * colW, behavior: smooth ? "smooth" : "auto" });
+    let lock = 0;
+    const goTo = (key) => {
+      if (key.slice(0, 4) !== yearOf()) return setMonth(key);   // другой год — перерисовка, вертикаль сохраняется
+      S.month = key; history.replaceState(history.state, "", urlFor(S.page, S.id)); title(); lock = Date.now(); show(true);
+    };
+    $$("[data-mon]", bar).forEach((b) => (b.onclick = () => goTo(+b.dataset.mon === 0 ? C.monthKey(C.todayStr()) : C.addMonths(S.month, +b.dataset.mon))));
+    let t = null;
+    wrap.addEventListener("scroll", () => { clearTimeout(t); t = setTimeout(() => { if (Date.now() - lock < 600) return; const i = Math.min(11, Math.max(0, Math.round(wrap.scrollLeft / colW))); if (i !== idx()) { S.month = yearOf() + "-" + String(i + 1).padStart(2, "0"); history.replaceState(history.state, "", urlFor(S.page, S.id)); title(); } }, 120); }, { passive: true });
+    show(false);
+  }
+  function wireViewToggle(root, rerender) { return; $$(".view-toggle [data-view]", root).forEach((b) => (b.onclick = () => { localStorage.setItem("sheetaet_view_" + b.parentElement.dataset.place, b.dataset.view); rerender(); })); }
 
   /* ---------- сворачивание разделов: крохотная стрелка у плашки; раздел складывается до заголовка ---------- */
   const FOLD_KEY = "sheetaet_fold";
@@ -560,6 +597,7 @@
     const redraw = () => { const w = $(".yt-wrap", root), sl = w ? w.scrollLeft : 0; (rerender || (() => render()))(); const w2 = $(".yt-wrap", root), h2 = $(".yt-head", root); if (w2) w2.scrollLeft = sl; if (h2 && w2) h2.scrollLeft = w2.scrollLeft; };
     $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, redraw, td)));
     wireFold(root);
+    wireMonthNav(root);
     $$(".yt tr[data-edit] td.yt-l", root).forEach((td) => {
       const spec = JSON.parse(td.parentElement.dataset.edit);
       if (!spec.title) return;
@@ -628,11 +666,12 @@
       && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? incTitle(e) === spec.title : (e.title || "расход").trim() === spec.title);
     // строка-слот (поступления в году): ячейка — ровно одна запись или пусто
     const list = spec.slot != null ? (td && td.dataset.eid ? S.entries.filter((e) => e.id === td.dataset.eid) : []) : S.entries.filter(match);
-    if (list.length > 1) { toast(`в ${C.monthPrep(key)} здесь ${list.length} записи — открываю месяц`); localStorage.setItem("sheetaet_view_" + (S.page === "team" ? "employee" : S.page === "org" ? "org" : "project"), "month"); setMonth(key); return; }
+    // несколько записей в ячейке (месячного вида больше нет): правим сумму целиком — записи сливаются в одну
+    const extra = list.length > 1 ? list.slice(1) : [];
     if (!td || td.querySelector("input")) return;
     const cur = list[0], p = projById(spec.project_id), emp = spec.employee_id ? empById(spec.employee_id) : null;
     td.classList.add("is-editing");
-    td.innerHTML = `<input class="yt-input" inputmode="decimal" value="${cur ? esc(C.amountToInput(cur.amount_minor)) : ""}" />`;
+    td.innerHTML = `<input class="yt-input" inputmode="decimal" value="${list.length ? esc(C.amountToInput(sumBy(list))) : ""}" />`;
     const inp = $("input", td); inp.focus(); inp.select();
     let done = false;
     const finish = async (save) => {
@@ -640,7 +679,8 @@
       if (!save) return after();
       const v = inp.value.trim(), a = v === "" ? 0 : C.parseAmount(v);
       if (a == null || a < 0) { toast("не похоже на сумму"); return after(); }
-      if (cur && a === cur.amount_minor) return after();
+      if (cur && a === cur.amount_minor && !extra.length) return after();
+      if (extra.length) { for (const x of extra) await safe(() => DB.remove("entries", x.id)); S.entries = S.entries.filter((x) => !extra.includes(x)); toast(`${extra.length + 1} записи объединены в одну`); }
       if (cur && !a) {
         await safe(() => DB.remove("entries", cur.id)); S.entries = S.entries.filter((x) => x !== cur);
         pushUndo("удаление суммы", async () => { const { id, created_at, updated_at, ...rest } = cur; const r = await DB.insert("entries", rest); S.entries.push(r); });
@@ -806,11 +846,11 @@
   function renderDashboard(main) {
     // переключатель «главные цифры / таблица» — иконки справа от заголовка страницы
     // «Сводка / Таблица» — сразу справа от заголовка; на телефоне только иконки, на компьютере иконка + название
-    $("#page-tools").innerHTML = `<button class="view-btn ${S.dashTab === "nums" ? "is-on" : ""}" data-tab="nums" title="Сводка" aria-label="Сводка">${ICON_NUMS}<span class="vb-label">Сводка</span></button><button class="view-btn ${S.dashTab === "table" ? "is-on" : ""}" data-tab="table" title="Таблица" aria-label="Таблица">${ICON_TABLE}<span class="vb-label">Таблица</span></button>${S.dashTab === "table" ? `<button class="view-btn vb-xlsx" data-xlsx title="Скачать в Excel" aria-label="Скачать в Excel">${ICON_DL}<span class="vb-label">Excel</span></button>` : ""}`;
+    $("#page-tools").innerHTML = `<button class="view-btn ${S.dashTab === "nums" ? "is-on" : ""}" data-tab="nums" title="Сводка" aria-label="Сводка">${ICON_NUMS}<span class="vb-label">Сводка</span></button><button class="view-btn ${S.dashTab === "table" ? "is-on" : ""}" data-tab="table" title="Таблица" aria-label="Таблица">${ICON_TABLE}<span class="vb-label">Таблица</span></button>${S.dashTab === "table" ? `<button class="view-btn vb-xlsx" data-xlsx title="Скачать в Excel" aria-label="Скачать в Excel">${ICON_DL}</button>` : ""}`;
     const xb = $("#page-tools [data-xlsx]"); if (xb) xb.onclick = () => exportDashXlsx(xb);
     $$("#page-tools [data-tab]").forEach((b) => (b.onclick = () => { S.dashTab = b.dataset.tab; localStorage.setItem("sheetaet_dash", S.dashTab); renderDashboard(main); }));
-    // «год / месяц» — один переключатель для «Сводки» и «Таблицы»
-    const yearMode = viewOf("dash") === "year";
+    // компьютер — всегда год; телефон: «Сводка» — за месяц, «Таблица» — год по месяцам (стрелки листают колонки)
+    const mob = isMobile(), yearMode = !mob;
     const prevKey = C.addMonths(S.month, -1);
     // факт и план: будущие месяцы — план. В текущем году сводка показывает факт (по текущий месяц) и прогноз на весь год,
     // сравнение — с тем же периодом прошлого года
@@ -820,11 +860,13 @@
     const forecast = midYear ? orgYearTotal(y) : null;
     const prev = yearMode ? orgYearTotal(py, midYear ? py + todayKey.slice(4) : null) : C.orgMonth(S.projects, S.entries, prevKey, S.org);
     const isPlan = yearMode ? y > todayKey.slice(0, 4) : S.month > todayKey;
-    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead("dash", yearMode ? "year" : "month")}<div id="dash-body"></div></div>`;
-    wireMonthBar(main); wireViewToggle(main, () => renderDashboard(main));
+    // компьютер: ‹ 2026 › — в шапке страницы, на одном уровне с «главная» и кнопками; телефон — закреплённая полоска сверху
+    if (!mob) { $("#page-tools").insertAdjacentHTML("beforeend", `<div class="pt-period">${monthBar("year")}</div>`); wireMonthBar($("#page-tools .pt-period")); }
+    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${mob ? periodHead(S.dashTab === "table" ? "grid" : "summary") : ""}<div id="dash-body"></div></div>`;
+    wireMonthBar(main);
     const body = $("#dash-body", main);
     const rb = remindBanner(); if (rb) { body.insertAdjacentHTML("beforebegin", rb); wireRemindBanner(main, () => renderDashboard(main)); }
-    if (S.dashTab === "table" && yearMode) { body.innerHTML = yearGrid(dashYearRows()); wireYearGrid(body, "dash"); return; }
+    if (S.dashTab === "table") { body.innerHTML = yearGrid(dashYearRows()); wireYearGrid(body, "dash"); return; }
     if (S.dashTab === "table") { body.innerHTML = dashTable(cur); $$("[data-open]", body).forEach((r) => (r.onclick = () => go(r.dataset.page, r.dataset.open))); wireFold(body); return; }
     const prevName = yearMode ? py + (midYear ? " (янв–" + C.MONTHS_SHORT[+todayKey.slice(5) - 1] + ")" : " году") : C.monthPrep(prevKey);
     const tiles = [
@@ -1051,7 +1093,7 @@
         <button class="meta-pill meta-remind ${p.remind_kind ? "" : "is-off"}" data-remind title="${p.remind_kind ? REMIND[p.remind_kind] : "напоминание не стоит"}">${p.remind_kind ? R_ICON.bell + `<span class="remind-date">${C.dayLabel(nextRemind(p).at)}</span>` + R_ICON[p.remind_kind] : R_ICON.bellOff}</button>
         ${p.archived ? `<span class="meta-pill is-empty">в архиве</span>` : ""}
         <button class="meta-pill meta-color" data-color title="цвет проекта"><span class="status-dot" style="--c:${p.color || PALETTE[0]}"></span></button></div>
-      ${periodHead("project", viewOf("project"))}
+      ${periodHead("grid")}
       <div id="p-tables" class="${S.month > C.monthKey(C.todayStr()) && viewOf("project") === "month" ? "is-plan-month" : ""}"></div>
       <div id="p-note" class="taskcard-desc" contenteditable="true" data-placeholder="заметки по проекту…"></div>
     </div>
@@ -1226,7 +1268,7 @@
       <span class="emp-projs">${pr.slice(0, 3).map((p) => `<span class="proj-pill task-proj" title="${esc(p.name)}"><span class="proj-emoji">${esc(p.emoji || "📁")}</span><span class="proj-name">${esc(p.name)}</span></span>`).join("")}${pr.length > 3 ? `<span class="proj-pill task-proj emp-more" title="${esc(pr.slice(3).map((p) => p.name).join(", "))}">ещё ${pr.length - 3}</span>` : ""}</span>
       <span class="meta-pill emp-day">${C.dayLabel(r.day)}</span>
       <span class="emp-sum">${fmz(r.t)}</span></div></div>`; };
-    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead(null, "month")}
+    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead("list")}
       <div class="emp-list">${rows.length ? rows.map(row).join("") : `<p class="empty">пока никого — добавьте по +</p>`}</div>
       <div class="fin-total emp-total"><span>зарплаты за ${C.MONTHS[+S.month.slice(5) - 1]}</span><span class="fin-sum">${fm(total)}</span></div></div>`;
     wireMonthBar(main);
@@ -1291,7 +1333,7 @@
       <div class="taskcard-meta sh-meta"><button class="meta-pill" data-day><span class="meta-cap">выплата</span>каждое ${e.pay_day}-е</button>
         <button class="status-slot" data-emp>${em ? `<span class="status-pill" style="--c:${em.c}"><span>${em.name}</span><span class="status-dot" style="--c:${em.c}"></span></span>` : `<span class="meta-pill is-empty">тип занятости</span>`}</button>
         ${e.active === false ? `<span class="meta-pill is-empty">в архиве</span>` : ""}</div>
-      ${periodHead("employee", yearMode ? "year" : "month")}
+      ${periodHead("grid")}
       <div id="e-body" class="${S.month > C.monthKey(C.todayStr()) && !yearMode ? "is-plan-month" : ""}"></div>
       <div id="e-note" class="taskcard-desc" contenteditable="true" data-placeholder="реквизиты, паспортные данные, как платить…"></div>
     </div>
@@ -1420,7 +1462,7 @@
         <button class="meta-pill" data-tax title="ставка налога от дохода проекта"><span class="meta-cap">налог</span>${taxPct()} от дохода проекта</button>
         <button class="meta-pill" data-rate><span class="meta-cap">цель по прибыли</span>${String(o.profit_rate ?? 20).replace(".", ",")}%</button>
         <button class="meta-pill" data-arch><span class="meta-cap">архив</span>${archN || ""}</button></div>
-      ${periodHead("org", yearMode ? "year" : "month")}
+      ${periodHead("grid")}
       <div id="o-fixed" class="${S.month > C.monthKey(C.todayStr()) && !yearMode ? "is-plan-month" : ""}"></div>
       <div class="proj-tasks"><div class="proj-tasks-head">участники</div>
         ${(S.people || []).map((p) => `<div class="org-person"><span>${esc(p.email)}</span><span class="pay-role">${p.role === "owner" ? "владелец" : "участник"}</span></div>`).join("")}</div>

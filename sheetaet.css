@@ -722,3 +722,25 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 /* окно напоминания: «Готово» — как «Отмена» в календаре */
 .remind-card .cal-actions{ display:flex; }
 .remind-card .cal-actions .btn{ flex:1; }
+
+/* ================= v24: только год; телефон — месяц стрелками по колонкам ================= */
+/* кнопка Excel — только иконка, отступ как между остальными кнопками */
+.page-tools .vb-xlsx{ margin-left:0; width:32px; padding:0; }
+@media (min-width:768px){ .page-tools .vb-xlsx{ width:35px; padding:0; } }
+.view-toggle{ display:none !important; }
+
+/* компьютер: ‹ 2026 › в шапке страницы, на одном уровне с «главная» и кнопками */
+.page-tools{ flex:1; align-items:center; }
+.pt-period{ margin-left:auto; }
+.pt-period .money-monthbar{ margin:0; }
+.pt-period .mbar-today{ position:static !important; transform:none !important; margin-left:6px; }
+.pt-period .money-month-title{ font-size:var(--fs-title); }
+
+/* телефон: полоска «‹ октябрь 2026 ›» закреплена сверху при прокрутке */
+.sh-month.is-sticky{ position:sticky; z-index:8; background:var(--bg); margin:0 0 6px; padding:8px 0 6px; }
+.sh-month.is-sticky .money-monthbar{ margin:0; }
+/* телефон: в годовой таблице видна одна колонка месяца; свайп и стрелки листают колонки с привязкой */
+.yt-wrap.is-mnav{ scroll-snap-type:x mandatory; overscroll-behavior-x:contain; }
+.yt-wrap.is-mnav tbody tr td:not(.yt-l){ scroll-snap-align:start; }
+.yt-block:has(.yt-wrap.is-mnav) .yt-head{ display:none; }
+.yt-wrap.is-mnav td:not(.yt-l){ text-align:right; padding-right:16px; }

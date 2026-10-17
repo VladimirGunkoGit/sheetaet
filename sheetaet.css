@@ -786,3 +786,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 [data-theme="light"]{ --plan-c: rgba(0,0,0,.3); }
 .yt tr td.st-plan, .yt tr.is-sum td.st-plan, .yt tr.yt-total td.st-plan, .yt tr.yt-profit td.st-plan, .yt tr.yt-pct td.st-plan{ color:var(--plan-c); }
 .st-opt.st-plan{ color:var(--plan-c); }
+/* колокольчик сотрудника */
+.meta-bell{ display:inline-flex; align-items:center; padding-left:9px; padding-right:9px; }
+.meta-bell svg{ display:block; }
+.meta-bell.is-off{ color:var(--muted); }

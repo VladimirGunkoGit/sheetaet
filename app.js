@@ -353,6 +353,7 @@
     $("#auth").hidden = true; $("#app").hidden = false;
     route();
     startRealtime();
+    if (!DEMO && pushSupported() && Notification.permission === "granted") navigator.serviceWorker.register(BASE + "/sw.js", { scope: BASE + "/" }).catch(() => {});
     notifyDue(); setInterval(notifyDue, 60 * 60 * 1000);
   }
 
@@ -441,12 +442,59 @@
   $("#brand-home").addEventListener("click", () => go(""));
   $("#back-btn").addEventListener("click", () => goBack(S.id ? S.page : ""));
   $("#org-btn").addEventListener("click", () => go("org"));
+  /* ================= УВЕДОМЛЕНИЯ: пуш на устройство и Телеграм =================
+     Сервер (функция sheetaet-notify, каждый день в 9:00 МСК) сам решает, что и кому отправить.
+     Здесь — только подписка устройства, привязка чата Телеграма и проверка. */
+  const FN_URL = (CFG.SUPABASE_URL || "") + "/functions/v1/sheetaet-notify";
+  async function fnCall(body) {
+    const { data } = await sb.auth.getSession(); if (!data.session) throw new Error("нужен вход");
+    const r = await fetch(FN_URL, { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + data.session.access_token, apikey: CFG.SUPABASE_ANON_KEY }, body: JSON.stringify({ slug: S.slug, ...body }) });
+    return r.json();
+  }
+  const pushSupported = () => "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const urlB64 = (b) => { const p = "=".repeat((4 - (b.length % 4)) % 4), raw = atob((b + p).replace(/-/g, "+").replace(/_/g, "/")); return Uint8Array.from(raw, (c) => c.charCodeAt(0)); };
+  async function pushSub() { if (!pushSupported()) return null; const reg = await navigator.serviceWorker.getRegistration(BASE + "/"); return reg ? await reg.pushManager.getSubscription() : null; }
+  async function enablePush() {
+    if (DEMO) return toast("в демо-режиме уведомления не подключаются");
+    if (!pushSupported()) return toast(isIOS() ? "на iPhone: «Поделиться» → «На экран Домой», откройте sheetaet оттуда и включите здесь" : "этот браузер не умеет пуш-уведомления");
+    const perm = await Notification.requestPermission(); if (perm !== "granted") return toast("уведомления запрещены в настройках браузера");
+    const reg = await navigator.serviceWorker.register(BASE + "/sw.js", { scope: BASE + "/" }); await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64(CFG.VAPID_PUBLIC) });
+    const j = sub.toJSON();
+    await safe(() => q(sb.from("push_subscriptions").upsert({ endpoint: j.endpoint, org_id: S.org.id, user_id: S.user.id, p256dh: j.keys.p256dh, auth: j.keys.auth })));
+    toast("уведомления включены на этом устройстве");
+  }
+  async function disablePush() {
+    const sub = await pushSub(); if (sub) { await sb.from("push_subscriptions").delete().eq("endpoint", sub.endpoint); await sub.unsubscribe(); }
+    toast("уведомления на этом устройстве выключены");
+  }
+  async function refreshNotifyButtons() {
+    const on = !DEMO && !!(await pushSub()) && Notification.permission === "granted";
+    $("#push-btn").textContent = on ? "Уведомления на устройстве: вкл · выключить" : "Включить уведомления на этом устройстве";
+    $("#push-btn").dataset.on = on ? "1" : "";
+    $("#tg-btn").textContent = S.org && S.org.tg_chat_id ? "Телеграм подключён ✓" : "Подключить Телеграм";
+    $("#test-btn").hidden = !(on || (S.org && S.org.tg_chat_id));
+  }
+  $("#push-btn").addEventListener("click", async () => { try { $("#push-btn").dataset.on ? await disablePush() : await enablePush(); } catch (e) { toast("не получилось: " + e.message); } refreshNotifyButtons(); });
+  $("#tg-btn").addEventListener("click", async () => {
+    if (DEMO) return toast("в демо-режиме Телеграм не подключается");
+    try {
+      const r = await fnCall({ action: "tg-link" });
+      if (!r.ok) return toast(r.error === "not_configured" ? "бот Телеграма ещё не настроен" : "не получилось: " + (r.error || ""));
+      await inputBox({ title: "подключить Телеграм", sub: `откроется Телеграм: выберите чат, куда добавить бота @${r.bot}. если чат не предложит отправить код сам — напишите в чате: /start ${r.code}`, value: `/start ${r.code}`, okLabel: "Открыть Телеграм" });
+      window.open(r.url, "_blank");
+    } catch (e) { toast("не получилось: " + e.message); }
+  });
+  $("#test-btn").addEventListener("click", async () => { try { const r = await fnCall({ action: "test" }); toast(r.ok ? `отправлено: пуш ${(r.push || []).filter((x) => x >= 200 && x < 300).length}, телеграм ${r.telegram ? "да" : "нет"}` : "не получилось"); } catch (e) { toast("не получилось: " + e.message); } });
+
   // личный кабинет — как в Gunco: кнопка-человечек справа вверху, всплывающее окно с почтой и «Выйти»
   $("#account-btn").addEventListener("click", () => {
     const pop = $("#account-pop"); if (!pop.hidden) { pop.hidden = true; return; }
     $("#account-email").textContent = DEMO ? "демо-режим" : (S.user && S.user.email) || "аккаунт";
     $("#account-signout").textContent = DEMO ? "Сбросить демо-данные" : "Выйти";
-    pop.hidden = false;
+    pop.hidden = false; refreshNotifyButtons();
   });
   $("#account-signout").addEventListener("click", async () => {
     $("#account-pop").hidden = true;
@@ -561,10 +609,9 @@
      готово — оплачено / пришло; план — ожидается; опоздание — план, у которого дата + льготный период
      (в настройках проекта или сотрудника) уже прошла. Опоздание не хранится, а вычисляется. */
   const ST_LABEL = { done: "готово", plan: "план", late: "опоздание" };
-  function graceOf(e) {
-    if (e.kind === "salary") { const em = empById(e.employee_id); if (em && em.grace_days) return em.grace_days; }
-    const p = e.project_id ? projById(e.project_id) : null; return (p && p.grace_days) || 0;
-  }
+  // опоздание — через 5 календарных дней после даты платежа, для всех проектов и платежей (настройки нет)
+  const LATE_DAYS = 5;
+  function graceOf() { return LATE_DAYS; }
   function effStatus(e) {
     const t = C.todayStr(), st = e.status || (e.date <= t ? "done" : "plan");
     if (st === "late") return "late";   // поставлено вручную
@@ -712,12 +759,6 @@
     const key = spec.kind === "income" ? "inc:" + spec.project_id : spec.kind === "expense" ? "exp:" + spec.project_id : "fix";
     S.extra[key] = extraTitles(key).map((t) => (t === spec.title ? title : t));
     redraw();
-  }
-  // через сколько дней после даты платежа «план» становится «опозданием»
-  async function graceBox(cur, what) {
-    const v = await inputBox({ title: "опоздание через, дней", sub: `${what}: если к дате платежа + столько дней статус не «готово», сумма станет красной. 0 — на следующий день`, value: String(cur), okLabel: "Сохранить" });
-    if (v == null) return null; const n = Math.round(Number(String(v).replace(",", ".").trim() || 0));
-    if (!Number.isFinite(n) || n < 0 || n > 365) { toast("от 0 до 365"); return null; } return n;
   }
   // меню статуса суммы: «готово» / «план»; «опоздание» ставится само (показывается текстом)
   function statusMenu(x, y, ids, redraw) {
@@ -1107,7 +1148,7 @@
     dueReminders().forEach((r) => {
       const key = `sheetaet_ntf_${r.p.id}_${r.mk}_${C.todayStr()}`;
       try { if (localStorage.getItem(key)) return; localStorage.setItem(key, "1"); } catch (e) {}
-      try { new Notification(`${r.p.name || "проект"}: ${REMIND[r.p.remind_kind]}`, { body: `поступление ~${C.dayLong(r.pay)}`, tag: "sheetaet-" + r.p.id }); } catch (e) {}
+      try { new Notification(`${r.p.name || "проект"}: ${REMIND[r.p.remind_kind]}`, { body: `дата платежа ${C.dayLong(r.pay)}`, tag: "sheetaet-" + r.p.id }); } catch (e) {}
     });
   }
   async function markRemindDone(p, mk) {
@@ -1119,7 +1160,7 @@
     const list = dueReminders(); if (!list.length) return "";
     return `<div class="remind-box">${list.map((r) => `<div class="remind-row"><span class="remind-bell">${R_ICON.bell}</span>
       <button class="remind-proj" data-ropen="${r.p.id}">${pl(r.p)}</button><span class="remind-what">${REMIND[r.p.remind_kind]}</span>
-      <span class="remind-when">поступление ~${C.dayLong(r.pay)}</span><button class="chip remind-done" data-rdone="${r.p.id}" data-mk="${r.mk}">готово</button></div>`).join("")}</div>`;
+      <span class="remind-when">дата платежа ${C.dayLong(r.pay)}</span><button class="chip remind-done" data-rdone="${r.p.id}" data-mk="${r.mk}">готово</button></div>`).join("")}</div>`;
   }
   function wireRemindBanner(root, rerender) {
     $$("[data-ropen]", root).forEach((b) => (b.onclick = () => go("projects", b.dataset.ropen)));
@@ -1194,8 +1235,7 @@
       <div class="taskcard-meta sh-meta">
         <button class="meta-pill ${p.start_date ? "" : "is-empty"}" data-d="start_date"><span class="meta-cap">договор с</span>${p.start_date ? fmtD(p.start_date) : ""}</button>
         <button class="meta-pill ${p.end_date || p.open_ended ? "" : "is-empty"}" data-d="end_date"><span class="meta-cap">до</span>${p.open_ended ? "бессрочно" : p.end_date ? fmtD(p.end_date) : ""}</button>
-        <button class="meta-pill" data-incday title="ориентировочный день поступления денег каждый месяц"><span class="meta-cap">поступление ~</span>${p.income_day || 10}-го</button>
-        <button class="meta-pill" data-grace title="через сколько дней после даты платежа план становится опозданием"><span class="meta-cap">опоздание через</span>${p.grace_days || 0} дн.</button>
+        <button class="meta-pill" data-incday title="день, когда заказчик платит каждый месяц"><span class="meta-cap">дата платежа</span>${p.income_day || 10}-го</button>
         <button class="meta-pill meta-remind ${p.remind_kind ? "" : "is-off"}" data-remind title="${p.remind_kind ? REMIND[p.remind_kind] : "напоминание не стоит"}">${p.remind_kind ? R_ICON.bell + `<span class="remind-date">${C.dayLabel(nextRemind(p).at)}</span>` + R_ICON[p.remind_kind] : R_ICON.bellOff}</button>
         ${p.archived ? `<span class="meta-pill is-empty">в архиве</span>` : ""}</div>
       ${periodHead("grid")}
@@ -1214,9 +1254,8 @@
     full.oninput = dbg(async () => { const v = full.innerText.replace(/\s+/g, " ").trim(); if (!v) full.innerHTML = ""; p.full_name = v || null; await safe(() => DB.update("projects", p.id, { full_name: p.full_name })); }, 500);
     full.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); full.blur(); } };
     full.onpaste = (e) => { e.preventDefault(); document.execCommand("insertText", false, (e.clipboardData || window.clipboardData).getData("text").replace(/\s+/g, " ")); };
-    $("[data-grace]", card).onclick = async () => { const n = await graceBox(p.grace_days || 0, "поступления и расходы проекта"); if (n == null) return; p.grace_days = n; await safe(() => DB.update("projects", p.id, { grace_days: n })); renderProject(main); };
     $("[data-remind]", card).onclick = async () => { await remindBox(p, () => {}); renderProject(main); };
-    $("[data-incday]", card).onclick = async () => { const d = await pickDay(p.income_day || 10, "поступление денег", "ориентировочный день, когда заказчик платит каждый месяц. подставляется в дату новых поступлений"); if (!d) return; p.income_day = d; await safe(() => DB.update("projects", p.id, { income_day: d })); renderProject(main); };
+    $("[data-incday]", card).onclick = async () => { const d = await pickDay(p.income_day || 10, "дата платежа", "день, когда заказчик платит каждый месяц. подставляется в дату новых поступлений"); if (!d) return; p.income_day = d; await safe(() => DB.update("projects", p.id, { income_day: d })); renderProject(main); };
     // дата окончания: под календарём «бессрочно» — второй даты нет, только пометка
     $$("[data-d]", card).forEach((b) => (b.onclick = async () => {
       const f = b.dataset.d, isEnd = f === "end_date";
@@ -1436,8 +1475,8 @@
     main.innerHTML = `<div class="taskcard scroll sh-card">
       <div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="Имя Фамилия" id="e-name">${esc(C.fullName(e))}</div>
       <div class="taskcard-meta sh-meta"><button class="meta-pill" data-day><span class="meta-cap">выплата</span>каждое ${e.pay_day}-е</button>
+        <button class="meta-pill meta-bell ${e.notify === false ? "is-off" : ""}" data-notify title="${e.notify === false ? "напоминание о выплате выключено" : "напоминание о выплате включено: в день выплаты и через 5 дней, если не «готово»"}">${e.notify === false ? R_ICON.bellOff : R_ICON.bell}</button>
         <button class="status-slot" data-emp>${em ? `<span class="status-pill" style="--c:${em.c}"><span>${em.name}</span><span class="status-dot" style="--c:${em.c}"></span></span>` : `<span class="meta-pill is-empty">тип занятости</span>`}</button>
-        <button class="meta-pill" data-grace title="через сколько дней после даты выплаты план становится опозданием"><span class="meta-cap">опоздание через</span>${e.grace_days || 0} дн.</button>
         ${e.active === false ? `<span class="meta-pill is-empty">в архиве</span>` : ""}</div>
       ${periodHead("grid")}
       <div id="e-body" class="${S.month > C.monthKey(C.todayStr()) && !yearMode ? "is-plan-month" : ""}"></div>
@@ -1451,7 +1490,7 @@
     const saveNote = dbg(async () => { e.note = $("#e-note").innerText; await safe(() => DB.update("employees", e.id, { note: e.note })); }, 600);
     $("#e-name").oninput = saveName; $("#e-note").oninput = saveNote;
     $("[data-day]", main).onclick = async () => { const d = await pickDay(e.pay_day); if (!d) return; e.pay_day = d; await safe(() => DB.update("employees", e.id, { pay_day: d })); renderEmployee(main); };
-    $("[data-grace]", main).onclick = async () => { const n = await graceBox(e.grace_days || 0, "выплаты этому человеку"); if (n == null) return; e.grace_days = n; await safe(() => DB.update("employees", e.id, { grace_days: n })); renderEmployee(main); };
+    $("[data-notify]", main).onclick = async () => { const on = e.notify === false; e.notify = on; await safe(() => DB.update("employees", e.id, { notify: on })); toast(on ? "напоминания о выплатах включены" : "напоминания о выплатах выключены"); renderEmployee(main); };
     $("[data-emp]", main).onclick = async () => { const k = await pickEmployment(e.employment); if (!k) return; e.employment = k; await safe(() => DB.update("employees", e.id, { employment: k })); renderEmployee(main); };
     $("[data-done]", main).onclick = async () => { if (!C.fullName(e)) { if (!S.entries.some((x) => x.employee_id === e.id)) { await DB.remove("employees", e.id); S.employees = S.employees.filter((x) => x.id !== e.id); } } goBack("team"); };
     $("[data-arch]", main).onclick = () => archiveEmployee(e, () => go("team"));

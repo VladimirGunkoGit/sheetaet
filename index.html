@@ -12,12 +12,13 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="sheetaet" />
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="manifest" href="manifest.webmanifest" />
 <link rel="icon" type="image/svg+xml" href="icons/rose.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Onest:wght@300;400;500;700;800&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="styles.css?v=34" />
-<link rel="stylesheet" href="sheetaet.css?v=34" />
+<link rel="stylesheet" href="styles.css?v=37" />
+<link rel="stylesheet" href="sheetaet.css?v=37" />
 </head>
 <body>
 
@@ -72,6 +73,9 @@
   <div id="account-pop" class="account-pop" hidden>
     <div class="account-label">личный кабинет</div>
     <div id="account-email" class="account-email"></div>
+    <button id="push-btn" class="btn" type="button">Уведомления на этом устройстве</button>
+    <button id="tg-btn" class="btn" type="button">Подключить Телеграм</button>
+    <button id="test-btn" class="btn" type="button" hidden>Проверить уведомления</button>
     <button id="account-signout" class="btn" type="button">Выйти</button>
   </div>
 </div>
@@ -79,11 +83,11 @@
 <div id="modals"></div>
 <div id="toast" class="toast" hidden></div>
 
-<script src="config.js?v=34"></script>
+<script src="config.js?v=37"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="core.js?v=34"></script>
-<script src="charts.js?v=34"></script>
-<script src="sortable.js?v=34"></script>
-<script src="app.js?v=34"></script>
+<script src="core.js?v=37"></script>
+<script src="charts.js?v=37"></script>
+<script src="sortable.js?v=37"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>

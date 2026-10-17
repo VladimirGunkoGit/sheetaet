@@ -848,6 +848,15 @@
      Дата — за 10 дней до дня поступления (income_day) или свой день месяца (remind_day).
      «Готово» отмечается за месяц поступления (remind_done = 'YYYY-MM'). */
   const REMIND = { act: "выставить акт", invoice: "выставить счёт", both: "выставить акт + счёт" };
+  const SVGI = (inner, w) => `<svg viewBox="0 0 16 16" width="${w || 15}" height="${w || 15}" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+  const SHEET = (x, y) => `<path d="M${x} ${y}h5l3 3v8h-8z"/><path d="M${x + 5} ${y}v3h3"/>`;
+  const R_ICON = {
+    bell: SVGI(`<path d="M4 7a4 4 0 0 1 8 0c0 2.9 1.1 3.8 1.5 4.1H2.5C2.9 10.8 4 9.9 4 7z"/><path d="M6.6 13.2a1.5 1.5 0 0 0 2.8 0"/>`),
+    bellOff: SVGI(`<path d="M4 7a4 4 0 0 1 8 0c0 2.9 1.1 3.8 1.5 4.1H2.5C2.9 10.8 4 9.9 4 7z"/><path d="M6.6 13.2a1.5 1.5 0 0 0 2.8 0"/><path d="M2.2 2.2l11.6 11.6"/>`),
+    act: SVGI(SHEET(4, 2)),                                                     // пустой листик — акт
+    invoice: SVGI(SHEET(4, 2) + `<circle cx="8" cy="9.5" r="2"/>`),             // листик с монеткой — счёт
+    both: SVGI(`<path d="M3 5v9h7"/>` + SHEET(5.5, 1) + `<circle cx="9.5" cy="8.5" r="1.8"/>`), // листик с монеткой, под ним второй — акт + счёт
+  };
   const addDays = (d, n) => { const t = new Date(d + "T00:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
   function remindFor(p, mk) {
     const pay = C.dayInMonth(mk, p.income_day || 10);
@@ -891,17 +900,28 @@
     $$("[data-ropen]", root).forEach((b) => (b.onclick = () => go("projects", b.dataset.ropen)));
     $$("[data-rdone]", root).forEach((b) => (b.onclick = async () => { await markRemindDone(projById(b.dataset.rdone), b.dataset.mk); toast("отмечено — следующее напоминание через месяц"); rerender(); }));
   }
-  // выбор дня напоминания: «за 10 дней до поступления» или свой день месяца
-  function pickRemindDay(p) {
+  // окно напоминания: что выставить (нет / акт / счёт / акт + счёт) и когда (за 10 дней до поступления или свой день)
+  function remindBox(p, onChange) {
     return new Promise((res) => {
-      const m = modal(`<div class="modal-title">когда напоминать</div>
-        <button class="remind-auto ${p.remind_day ? "" : "is-on"}" data-auto>за 10 дней до поступления</button>
-        <div class="money-note">или свой день каждого месяца:</div>
-        <div class="day-grid">${Array.from({ length: 31 }, (_, i) => `<button class="cal-day ${i + 1 === p.remind_day ? "sel" : ""}" data-d="${i + 1}">${i + 1}</button>`).join("")}</div>
-        <div class="money-note">поступление ~${p.income_day || 10}-го. если день позже поступления — напомню в прошлом месяце</div>`, "cal-card");
-      m._onClose = () => res(undefined);
-      $("[data-auto]", m).onclick = () => { m._onClose = null; m.remove(); res(null); };
-      $$("[data-d]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(+b.dataset.d); }));
+      const m = modal(`<div class="modal-title">напоминание</div><div class="remind-opts"></div><div class="remind-when-box"></div><button class="modal-clear" data-ok>готово</button>`, "cal-card remind-card");
+      m._onClose = () => res();
+      const save = async (patch) => { Object.assign(p, patch); await safe(() => DB.update("projects", p.id, patch)); onChange(); draw(); };
+      const draw = () => {
+        $(".remind-opts", m).innerHTML = [["", "нет", R_ICON.bellOff], ...Object.entries(REMIND).map(([k, v]) => [k, v, R_ICON[k]])]
+          .map(([k, v, ic]) => `<button class="remind-opt ${(p.remind_kind || "") === k ? "is-on" : ""}" data-k="${k}">${ic}<span>${v}</span></button>`).join("");
+        $(".remind-when-box", m).innerHTML = p.remind_kind ? `<div class="money-note">когда — ближайшее ${C.dayLong(nextRemind(p).at)}</div>
+          <button class="remind-auto ${p.remind_day ? "" : "is-on"}" data-auto>за 10 дней до поступления</button>
+          <div class="day-grid">${Array.from({ length: 31 }, (_, i) => `<button class="cal-day ${i + 1 === p.remind_day ? "sel" : ""}" data-d="${i + 1}">${i + 1}</button>`).join("")}</div>
+          <div class="money-note">или свой день каждого месяца. поступление ~${p.income_day || 10}-го; если день позже — напомню в прошлом месяце</div>` : "";
+        $$("[data-k]", m).forEach((b) => (b.onclick = async () => {
+          const v = b.dataset.k || null; await save({ remind_kind: v });
+          if (v && "Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
+        }));
+        const au = $("[data-auto]", m); if (au) au.onclick = () => save({ remind_day: null });
+        $$("[data-d]", m).forEach((b) => (b.onclick = () => save({ remind_day: +b.dataset.d })));
+      };
+      $("[data-ok]", m).onclick = () => close(m);
+      draw();
     });
   }
 
@@ -951,9 +971,7 @@
         <button class="meta-pill ${p.start_date ? "" : "is-empty"}" data-d="start_date"><span class="meta-cap">договор с</span>${p.start_date ? fmtD(p.start_date) : ""}</button>
         <button class="meta-pill ${p.end_date || p.open_ended ? "" : "is-empty"}" data-d="end_date"><span class="meta-cap">до</span>${p.open_ended ? "бессрочно" : p.end_date ? fmtD(p.end_date) : ""}</button>
         <button class="meta-pill" data-incday title="ориентировочный день поступления денег каждый месяц"><span class="meta-cap">поступление ~</span>${p.income_day || 10}-го</button>
-        <label class="meta-pill meta-remind ${p.remind_kind ? "" : "is-empty"}" title="напоминание каждый месяц перед поступлением"><span class="meta-cap">напомнить</span><select data-remind>
-          <option value="" ${p.remind_kind ? "" : "selected"}>нет</option>${Object.entries(REMIND).map(([k, v]) => `<option value="${k}" ${p.remind_kind === k ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-        ${p.remind_kind ? (() => { const r = nextRemind(p); return `<button class="meta-pill" data-remday title="когда напоминать"><span class="meta-cap">${p.remind_day ? "каждое " + p.remind_day + "-е" : "за 10 дней"}</span>${C.dayLabel(r.at)}</button>`; })() : ""}
+        <button class="meta-pill meta-remind ${p.remind_kind ? "" : "is-off"}" data-remind title="${p.remind_kind ? REMIND[p.remind_kind] : "напоминание не стоит"}">${p.remind_kind ? R_ICON.bell + `<span class="remind-date">${C.dayLabel(nextRemind(p).at)}</span>` + R_ICON[p.remind_kind] : R_ICON.bellOff}</button>
         ${p.archived ? `<span class="meta-pill is-empty">в архиве</span>` : ""}
         <button class="meta-pill meta-color" data-color title="цвет проекта"><span class="status-dot" style="--c:${p.color || PALETTE[0]}"></span></button></div>
       ${periodHead("project", viewOf("project"))}
@@ -975,12 +993,7 @@
     $("[data-emoji]", card).onclick = async () => { const em = await pickEmoji(p.emoji); if (!em) return; p.emoji = em; await safe(() => DB.update("projects", p.id, { emoji: em })); renderProject(main); };
     $("[data-status]", card).onclick = async () => { const k = await pickStatus(p.status); if (!k) return; const prev = p.status; p.status = k; await safe(() => DB.update("projects", p.id, { status: k })); pushUndo("статус", () => DB.update("projects", p.id, { status: (p.status = prev) })); renderProject(main); };
     $("[data-color]", card).onclick = async () => { const c = await pickColor(p.color); if (!c) return; p.color = c; await safe(() => DB.update("projects", p.id, { color: c })); renderProject(main); };
-    $("[data-remind]", card).onchange = async (ev) => {
-      const v = ev.target.value || null; p.remind_kind = v; await safe(() => DB.update("projects", p.id, { remind_kind: v }));
-      if (v && "Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
-      if (v) toast(`напомню ${C.dayLong(nextRemind(p).at)}`); renderProject(main);
-    };
-    const rd = $("[data-remday]", card); if (rd) rd.onclick = async () => { const d = await pickRemindDay(p); if (d === undefined) return; p.remind_day = d; await safe(() => DB.update("projects", p.id, { remind_day: d })); toast(`напомню ${C.dayLong(nextRemind(p).at)}`); renderProject(main); };
+    $("[data-remind]", card).onclick = async () => { await remindBox(p, () => {}); renderProject(main); };
     $("[data-incday]", card).onclick = async () => { const d = await pickDay(p.income_day || 10, "поступление денег", "ориентировочный день, когда заказчик платит каждый месяц. подставляется в дату новых поступлений"); if (!d) return; p.income_day = d; await safe(() => DB.update("projects", p.id, { income_day: d })); renderProject(main); };
     // дата окончания: под календарём «бессрочно» — второй даты нет, только пометка
     $$("[data-d]", card).forEach((b) => (b.onclick = async () => {

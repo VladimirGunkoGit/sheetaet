@@ -29,7 +29,7 @@
   function donut(segs, center) {
     const list = segs.filter((s) => s.value > 0);
     const total = list.reduce((s, x) => s + x.value, 0);
-    if (!total) return `<p class="empty">нет данных за месяц</p>`;
+    if (!total) return `<p class="empty">нет данных за этот период</p>`;
     const R = 70, r = 46, cx = 90, cy = 90;
     let a0 = -Math.PI / 2, paths = "", labels = "";
     list.forEach((s) => {

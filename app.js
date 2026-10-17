@@ -276,11 +276,14 @@
   function go(page, id, opts) {
     opts = opts || {};
     const u = urlFor(page, id, opts.month);
-    if (opts.replace) history.replaceState(null, "", u); else history.pushState(null, "", u);
+    // переход внутри приложения помечаем — тогда «назад» вернёт ровно на предыдущую страницу
+    if (opts.replace) history.replaceState(history.state, "", u); else history.pushState({ app: 1 }, "", u);
     route();
   }
   window.addEventListener("popstate", route);
-  function setMonth(key) { S.month = key; history.replaceState(null, "", urlFor(S.page, S.id)); render(); }
+  function setMonth(key) { S.month = key; history.replaceState(history.state, "", urlFor(S.page, S.id)); render(); }
+  // «назад» из карточки: туда, откуда пришли (главная, проект, сотрудник, архив…); если карточку открыли по ссылке — в список
+  function goBack(fallback) { if (history.state && history.state.app) history.back(); else go(fallback != null ? fallback : S.page, null, { replace: true }); }
 
   /* ================= ВХОД ================= */
   function authMsg(t, err) { const el = $("#auth-msg"); el.textContent = t || ""; el.classList.toggle("is-error", !!err); }
@@ -363,7 +366,7 @@
   }
   $$("#page-nav .nav-item").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
   $("#brand-home").addEventListener("click", () => go(""));
-  $("#back-btn").addEventListener("click", () => go(S.page));
+  $("#back-btn").addEventListener("click", () => goBack());
   // личный кабинет — как в Gunco: кнопка-человечек справа вверху, всплывающее окно с почтой и «Выйти»
   $("#account-btn").addEventListener("click", () => {
     const pop = $("#account-pop"); if (!pop.hidden) { pop.hidden = true; return; }
@@ -580,29 +583,38 @@
   /* ================= ГЛАВНАЯ ================= */
   const ICON_NUMS = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19.5V12M10.5 19.5V5M16 19.5v-5M20.5 19.5h-17"/></svg>`;
   const ICON_TABLE = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10"/></svg>`;
+  // итоги организации за год — та же форма, что у месяца (orgMonth), для «Сводки» по году
+  function orgYearTotal(year) {
+    const ms = C.orgYear(S.projects, S.entries, year, S.org);
+    const keys = ["income", "salaries", "tax", "projOther", "fixed", "other", "expense", "profit", "projectsProfit"];
+    const out = {}; keys.forEach((k) => (out[k] = ms.reduce((s, m) => s + m[k], 0)));
+    out.per = S.projects.map((p) => { const x = { project: p, income: 0, profit: 0, other: 0, salaries: 0, tax: 0, total: 0 }; ms.forEach((m) => { const y = m.per.find((z) => z.project.id === p.id); if (y) ["income", "profit", "other", "salaries", "tax", "total"].forEach((k) => (x[k] += y[k])); }); return x; });
+    return out;
+  }
   function renderDashboard(main) {
     // переключатель «главные цифры / таблица» — иконки справа от заголовка страницы
     // «Сводка / Таблица» — сразу справа от заголовка; на телефоне только иконки, на компьютере иконка + название
     $("#page-tools").innerHTML = `<button class="view-btn ${S.dashTab === "nums" ? "is-on" : ""}" data-tab="nums" title="Сводка" aria-label="Сводка">${ICON_NUMS}<span class="vb-label">Сводка</span></button><button class="view-btn ${S.dashTab === "table" ? "is-on" : ""}" data-tab="table" title="Таблица" aria-label="Таблица">${ICON_TABLE}<span class="vb-label">Таблица</span></button>`;
     $$("#page-tools [data-tab]").forEach((b) => (b.onclick = () => { S.dashTab = b.dataset.tab; localStorage.setItem("sheetaet_dash", S.dashTab); renderDashboard(main); }));
-    const cur = C.orgMonth(S.projects, S.entries, S.month, S.org);
+    // «год / месяц» — один переключатель для «Сводки» и «Таблицы»
+    const yearMode = viewOf("dash") === "year";
     const prevKey = C.addMonths(S.month, -1);
-    const prev = C.orgMonth(S.projects, S.entries, prevKey, S.org);
-    const yearMode = S.dashTab === "table" && viewOf("dash") === "year";
-    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead(S.dashTab === "table" ? "dash" : null, yearMode ? "year" : "month")}<div id="dash-body"></div></div>`;
+    const cur = yearMode ? orgYearTotal(yearOf()) : C.orgMonth(S.projects, S.entries, S.month, S.org);
+    const prev = yearMode ? orgYearTotal(String(+yearOf() - 1)) : C.orgMonth(S.projects, S.entries, prevKey, S.org);
+    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead("dash", yearMode ? "year" : "month")}<div id="dash-body"></div></div>`;
     wireMonthBar(main); wireViewToggle(main, () => renderDashboard(main));
     const body = $("#dash-body", main);
     if (S.dashTab === "table" && yearMode) { body.innerHTML = yearGrid(dashYearRows()); wireYearGrid(body, "dash"); return; }
     if (S.dashTab === "table") { body.innerHTML = dashTable(cur); $$("[data-open]", body).forEach((r) => (r.onclick = () => go(r.dataset.page, r.dataset.open))); wireFold(body); return; }
-    const prevName = C.monthPrep(prevKey);
+    const prevName = yearMode ? String(+yearOf() - 1) + " году" : C.monthPrep(prevKey);
     const tiles = [
       ["прибыль всего", cur.profit, prev.profit, "up-good", "profit"], ["доход всего", cur.income, prev.income, "up-good", "income"],
       ["расход всего", cur.expense, prev.expense, "up-bad", "expense"], ["зарплаты", cur.salaries, prev.salaries, "up-bad", "salary"],
       ["налоги", cur.tax, prev.tax, "up-bad", "tax"], ["прочие расходы", cur.other, prev.other, "up-bad", "expense"],
     ];
-    const per = periodOf("month"), shown = new Set(listProjects(per).map((p) => p.id));
+    const per = periodOf(yearMode ? "year" : "month"), shown = new Set(listProjects(per).map((p) => p.id));
     const empty = !cur.income && !cur.expense;
-    body.innerHTML = `${empty ? `<p class="empty">в ${C.monthPrep(S.month)} пока нет записей</p>` : ""}
+    body.innerHTML = `${empty ? `<p class="empty">${yearMode ? "в " + yearOf() + " году" : "в " + C.monthPrep(S.month)} пока нет записей</p>` : ""}
       <div class="kpi-grid">${tiles.map(([label, v, pv, kind, k]) => { const cmp = C.compare(v, pv, kind); const tri = cmp.dir === "up" ? "▲" : cmp.dir === "down" ? "▼" : "▶"; return `<button class="kpi" data-tab-go="table">
         <span class="kpi-num ${v < 0 ? "is-neg" : ""}">${fm(v)}</span>
         <span class="kpi-label"><span class="k-dot" style="--c:${K[k]}"></span>${label}</span>
@@ -756,7 +768,7 @@
       const patch = v === "open" ? { end_date: null, open_ended: true } : isEnd ? { end_date: v, open_ended: false } : { [f]: v };
       Object.assign(p, patch); await safe(() => DB.update("projects", p.id, patch)); renderProject(main);
     }));
-    $("[data-done]", main).onclick = async () => { if (!p.name) { p.name = "Без названия"; await DB.update("projects", p.id, { name: p.name }); } go("projects"); };
+    $("[data-done]", main).onclick = async () => { if (!p.name) { p.name = "Без названия"; await DB.update("projects", p.id, { name: p.name }); } goBack("projects"); };
     $("[data-arch]", main).onclick = async () => {
       const to = !p.archived;
       if (to && !(await confirmBox("Убрать проект в архив?", "он пропадёт из списков, но все суммы сохранятся. вернуть можно в карточке организации (кнопка «портфель»)", "В архив"))) return;
@@ -963,7 +975,7 @@
     $("#e-name").oninput = saveName; $("#e-note").oninput = saveNote;
     $("[data-day]", main).onclick = async () => { const d = await pickDay(e.pay_day); if (!d) return; e.pay_day = d; await safe(() => DB.update("employees", e.id, { pay_day: d })); renderEmployee(main); };
     $("[data-emp]", main).onclick = async () => { const k = await pickEmployment(e.employment); if (!k) return; e.employment = k; await safe(() => DB.update("employees", e.id, { employment: k })); renderEmployee(main); };
-    $("[data-done]", main).onclick = async () => { if (!C.fullName(e)) { if (!S.entries.some((x) => x.employee_id === e.id)) { await DB.remove("employees", e.id); S.employees = S.employees.filter((x) => x.id !== e.id); } } go("team"); };
+    $("[data-done]", main).onclick = async () => { if (!C.fullName(e)) { if (!S.entries.some((x) => x.employee_id === e.id)) { await DB.remove("employees", e.id); S.employees = S.employees.filter((x) => x.id !== e.id); } } goBack("team"); };
     $("[data-arch]", main).onclick = () => archiveEmployee(e, () => go("team"));
   }
   // карточка сотрудника: проекты = строки выплат (все проекты человека, даже без суммы в этом месяце)

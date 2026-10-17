@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>sheetaet lite</title>
+<meta name="description" content="sheetaet lite — экономика маленькой организации в одной таблице" />
+<meta name="robots" content="noindex" />
+<script>try { var t = localStorage.getItem("sheetaet_theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
+<meta name="theme-color" content="#000000" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<link rel="icon" type="image/svg+xml" href="icons/rose.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="lite.css?v=8" />
+</head>
+<body>
+
+<!-- вход: одна форма -->
+<section id="login" class="login" hidden>
+  <div class="login-box">
+    <div class="brand"><img src="icons/rose.svg" alt="" width="34" height="34" /><span>sheetaet <i>lite</i></span></div>
+    <form id="login-form" autocomplete="on">
+      <input id="l-email" class="field" type="email" placeholder="e-mail" autocomplete="email" required />
+      <input id="l-pass" class="field" type="password" placeholder="пароль" autocomplete="current-password" required />
+      <button class="btn btn--solid" type="submit">Войти</button>
+      <button id="l-forgot" class="link" type="button">Забыли пароль?</button>
+    </form>
+    <p id="l-msg" class="msg"></p>
+  </div>
+</section>
+
+<!-- приложение: одна таблица (организация или проект) -->
+<section id="app" class="app" hidden>
+  <header class="bar">
+    <button id="back" class="icon-btn" aria-label="Назад" hidden>‹</button>
+    <div class="bar-title"><h1 id="title" spellcheck="false"></h1><span id="title-sub" class="sub"></span></div>
+    <div class="year">
+      <button class="icon-btn" data-y="-1" aria-label="Предыдущий год">‹</button>
+      <span id="year"></span>
+      <button class="icon-btn" data-y="1" aria-label="Следующий год">›</button>
+    </div>
+    <div class="bar-tools">
+      <label class="search" title="Найти строку"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg><input id="q" type="search" placeholder="найти" aria-label="Найти строку" /></label>
+      <button id="arch-btn" class="btn-quiet" hidden>В архив</button>
+      <button id="settings-btn" class="icon-btn" aria-label="Настройки" title="Настройки">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      </button>
+    </div>
+  </header>
+  <main id="scroll" class="scroll" tabindex="-1"><table id="sheet" class="sheet"></table></main>
+  <footer id="foot" class="foot"></footer>
+</section>
+
+<div id="modals"></div>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="config.js?v=8"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="lite.js?v=8"></script>
+</body>
+</html>

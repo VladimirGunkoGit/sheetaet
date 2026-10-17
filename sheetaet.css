@@ -422,3 +422,102 @@
 .yt tr[data-open]:hover .yt-l,
 .yt tr.is-sum .yt-l, .yt tr.yt-total .yt-l,
 [data-theme] .yt tr.is-sum .yt-l, [data-theme] .yt tr.yt-total .yt-l{ background:linear-gradient(var(--inactive-bg), var(--inactive-bg)), var(--bg); }
+
+/* ================= ПРАВКИ v4 ================= */
+/* единый светло-серый для подсветки (текущий месяц, итоги, наведение) и линия текущего месяца */
+:root{ --hl: rgba(255,255,255,.14); --cur-line: rgba(255,255,255,.9); }
+[data-theme="light"]{ --hl: rgba(0,0,0,.06); --cur-line: rgba(0,0,0,.55); }
+
+/* 5. «Сводка / Таблица» — сразу справа от заголовка; на компьютере иконка + название */
+.subhead{ align-items:center; }
+.page-tools{ margin-left:14px; align-self:center; }
+.page-tools .view-btn{ gap:6px; }
+.page-tools .vb-label{ display:none; }
+@media (min-width:768px){
+  .page-tools .view-btn{ width:auto; padding:0 12px 0 10px; }
+  .page-tools .vb-label{ display:inline; font-size:var(--fs-body); }
+  .page-tools .view-btn svg{ opacity:.6; }
+}
+
+/* 1, 2, 10. шапка периода одинаковая везде: ‹ название › и под ним «год / месяц» */
+.sh-month{ margin:22px 0 4px; }
+.sh-pane > .sh-month:first-child{ margin-top:0; }
+.sh-month .money-monthbar{ margin-bottom:6px; }
+.sh-month .view-toggle{ margin:0 0 16px; }
+
+/* 13. организация в нижнем меню — на её странице место под меню */
+.sh-card--nav{ padding-bottom:calc(var(--safe-bottom) + 96px); }
+
+/* 4. годовая таблица: строка месяцев закреплена сверху и едет вбок вместе с таблицей */
+.yt-block{ position:relative; margin-bottom:8px; }
+.yt-head{ position:sticky; top:0; z-index:6; overflow:hidden; background:var(--bg); }
+.yt-wrap{ margin-bottom:0; }
+.yt--head th{ height:26px; font-size:11px; }
+.yt-block .yt{ width:max(100%, 1240px); min-width:0; }
+.yt-block col.yt-c-m{ width:auto; }
+@media (max-width:767px){ .yt-block .yt{ width:1228px; } .yt-block col.yt-c-l{ width:136px; } .yt-block col.yt-c-m{ width:84px; } .yt-block col.yt-c-t{ width:92px; } }
+@media (min-width:860px){ .yt-block .yt{ width:max(100%, 1500px); } .yt-block col.yt-c-l{ width:240px; } .yt-block col.yt-c-t{ width:120px; } }
+
+/* 3. один размер шрифта во всей таблице: названия слева = цифры */
+.yt td{ font-size:var(--fs-body); }
+.yt td, .yt th{ padding-left:8px; padding-right:8px; }
+.yt .yt-l, .yt .yt-l .proj-emoji{ font-size:var(--fs-body); }
+.yt .yt-l{ color:var(--fg); }
+.dt-l{ color:var(--fg); }
+.dt-l .proj-emoji{ font-size:inherit; }
+
+/* 8. подсветка: один светло-серый тон; текущий месяц — ещё и линии слева и справа */
+.yt tr + tr td, .yt tbody tr:first-child td{ border-top:2px solid transparent; background-clip:padding-box; }
+.yt tr[data-open]:hover td{ background:var(--hl); }
+.yt tr.is-sum td, .yt tr.yt-total td{ background:var(--hl); }
+.yt tr[data-open]:hover .yt-l,
+.yt tr.is-sum .yt-l, .yt tr.yt-total .yt-l,
+[data-theme] .yt tr.is-sum .yt-l, [data-theme] .yt tr.yt-total .yt-l{ background:linear-gradient(var(--hl), var(--hl)), var(--bg); }
+.yt td.is-cur, .yt th.is-cur, .yt tr td.is-cur{ background:var(--hl); background-clip:border-box; position:relative; overflow:visible; }
+.yt td.is-cur::after, .yt th.is-cur::after{ content:""; position:absolute; top:-2px; bottom:0; left:0; right:0; border-left:1px solid var(--cur-line); border-right:1px solid var(--cur-line); pointer-events:none; }
+.yt th.is-cur::after{ top:0; }
+.yt th.is-cur{ color:var(--fg); }
+
+/* 6. итог «чистая прибыль» — тем же шрифтом, что и другие итоги */
+.yt tr.yt-total td{ font-family:var(--font-body); font-weight:500; font-size:var(--fs-body); padding-top:0; padding-bottom:0; }
+.dt-row.is-sum, .dt-total{ background:var(--hl); }
+.dt-total{ margin-top:3px; padding:7px 10px; font-weight:500; }
+.dt-total .dt-l, .dt-total .dt-v{ font-family:var(--font-body); font-weight:500; font-size:inherit; }
+.ent-total{ background:var(--hl); }
+
+/* 9. разделы — широкие полосы как в карточке проекта: полоса светлее плашки, высотой с плашку */
+.ent-head{ background:rgba(var(--c), .14); padding:0 10px 0 0; border:none; border-radius:5px; }
+.ent-head .k-pill{ background:rgba(var(--c), .3); }
+.dt-sec.ent-head{ margin:16px 0 4px; padding:0 10px 0 0; border:none; }
+.dash-table > .dt-sec:first-child{ margin-top:0; }
+.dt-sec .k-pill{ font-size:12px; }
+.emp-month.ent-head{ margin:4px 0 6px; }
+.yt tr.yt-sec td{ height:auto; padding:0; border-top:16px solid transparent; border-bottom:4px solid transparent; background:rgba(var(--c), .14); background-clip:padding-box; }
+.yt tbody tr.yt-sec:first-child td{ border-top-width:0; }
+.yt tr.yt-sec td.yt-l, [data-theme] .yt tr.yt-sec td.yt-l{ background:linear-gradient(rgba(var(--c), .14), rgba(var(--c), .14)), var(--bg); background-clip:padding-box; padding-left:0; border-radius:5px 0 0 5px; }
+.yt tr.yt-sec td:last-child{ border-radius:0 5px 5px 0; }
+.yt tr.yt-sec .k-pill{ background:rgba(var(--c), .3); font-size:12px; }
+.yt tr.yt-sec td.is-cur{ background:rgba(var(--c), .14); background-clip:padding-box; }
+.yt tr.yt-sec td.is-cur::after{ top:-16px; bottom:-4px; }
+@media (min-width:860px){ .dt-sec .k-pill, .yt tr.yt-sec .k-pill{ font-size:13px; } }
+
+/* правка суммы в годовом виде — нажатием на ячейку */
+.yt tr.is-edit td[data-mk], .yt tr.is-edit td.yt-l{ cursor:pointer; }
+.yt tr.is-edit td[data-mk]:hover{ box-shadow:inset 0 0 0 1px var(--muted); border-radius:4px; }
+
+/* 7. кольцо: размер подписи считается в charts.js под отверстие */
+.ch-c-val, .ch-c-label{ font-size:inherit; }
+
+/* 11. «бессрочно» под календарём */
+.cal-open-end{ align-self:center; border:none; border-radius:5px; background:var(--inactive-bg); color:var(--text-soft); font-size:12px; padding:5px 12px; cursor:pointer; }
+.cal-open-end.is-on{ background:var(--solid-bg); color:var(--solid-fg); }
+
+/* 12. архив — отдельное окно: проекты и люди двумя списками */
+.arch-body{ display:flex; flex-direction:column; gap:2px; max-height:60vh; overflow-y:auto; }
+.arch-head{ font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; padding:10px 2px 4px; }
+.arch-head:first-child{ padding-top:0; }
+.arch-modal .org-arch-row{ grid-template-columns:minmax(0,1fr) auto auto; }
+.arch-del{ color:#e5484d; }
+@media (max-width:767px){ .yt-block .yt{ width:1250px; } .yt-block col.yt-c-l{ width:158px; } }
+/* название раздела не обрезается — плашка может выйти на полосу */
+.yt tr.yt-sec td.yt-l{ overflow:visible; z-index:4; }

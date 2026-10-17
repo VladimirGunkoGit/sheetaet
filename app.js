@@ -148,11 +148,13 @@
     });
   }
   // календарь (как в Gunco)
-  function pickDate(value) {
+  function pickDate(value, opts) {
+    opts = opts || {};
     return new Promise((res) => {
       const base = (value || C.todayStr()).split("-").map(Number); let y = base[0], mo = base[1] - 1;
       const m = modal(`<div class="cal-head"><button class="icon-btn" data-p>‹</button><div class="cal-title-wrap"><div class="cal-title"></div></div><button class="icon-btn" data-nx>›</button></div>
         <div class="cal-weekdays"><span>пн</span><span>вт</span><span>ср</span><span>чт</span><span>пт</span><span>сб</span><span>вс</span></div><div class="cal-grid"></div>
+        ${opts.openEnded ? `<button class="cal-open-end ${opts.isOpen ? "is-on" : ""}" data-open-end>бессрочно</button>` : ""}
         <div class="cal-actions"><button class="btn" data-n>Отмена</button></div>`, "cal-card");
       m._onClose = () => res(null);
       const draw = () => {
@@ -166,6 +168,7 @@
       $("[data-p]", m).onclick = () => { mo--; if (mo < 0) { mo = 11; y--; } draw(); };
       $("[data-nx]", m).onclick = () => { mo++; if (mo > 11) { mo = 0; y++; } draw(); };
       $("[data-n]", m).onclick = () => close(m);
+      const oe = $("[data-open-end]", m); if (oe) oe.onclick = () => { m._onClose = null; m.remove(); res("open"); };
       draw();
     });
   }
@@ -340,14 +343,14 @@
   }
   function render() {
     if (!S.org) return;
-    const page = S.page, isCard = !!S.id || page === "org";
-    $("#page-title").textContent = isCard && page !== "org" ? "" : TITLES[page] || "";
-    $("#page-title").hidden = isCard && page !== "org";
+    const page = S.page, isCard = !!S.id;
+    $("#page-title").textContent = isCard ? "" : TITLES[page] || "";
+    $("#page-title").hidden = isCard;
     $("#back-btn").hidden = !isCard;
     $("#page-nav").hidden = isCard;
     $("#fab").hidden = isCard || !(page === "projects" || page === "team");
     $$("#page-nav .nav-item").forEach((b) => b.classList.toggle("active", b.dataset.go === page));
-    $("#org-btn").classList.toggle("is-on", page === "org");
+    $("#account-pop").hidden = true;
     $("#page-tools").innerHTML = "";
     const main = $("#main");
     if (page === "" ) renderDashboard(main);
@@ -360,8 +363,20 @@
   }
   $$("#page-nav .nav-item").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
   $("#brand-home").addEventListener("click", () => go(""));
-  $("#org-btn").addEventListener("click", () => go("org"));
-  $("#back-btn").addEventListener("click", () => { if (S.page === "org") return history.length > 1 ? history.back() : go(""); go(S.page); });
+  $("#back-btn").addEventListener("click", () => go(S.page));
+  // личный кабинет — как в Gunco: кнопка-человечек справа вверху, всплывающее окно с почтой и «Выйти»
+  $("#account-btn").addEventListener("click", () => {
+    const pop = $("#account-pop"); if (!pop.hidden) { pop.hidden = true; return; }
+    $("#account-email").textContent = DEMO ? "демо-режим" : (S.user && S.user.email) || "аккаунт";
+    $("#account-signout").textContent = DEMO ? "Сбросить демо-данные" : "Выйти";
+    pop.hidden = false;
+  });
+  $("#account-signout").addEventListener("click", async () => {
+    $("#account-pop").hidden = true;
+    if (DEMO) { localStorage.removeItem(DEMO_KEY); toast("демо-данные сброшены"); location.reload(); return; }
+    if (await confirmBox("Выйти из аккаунта?")) logout();
+  });
+  document.addEventListener("click", (e) => { const pop = $("#account-pop"); if (!pop.hidden && !e.target.closest("#account-pop") && !e.target.closest("#account-btn")) pop.hidden = true; });
   $("#theme-btn").addEventListener("click", () => { const t = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark"; document.documentElement.setAttribute("data-theme", t); try { localStorage.setItem("sheetaet_theme", t); } catch (e) {} });
   $("#fab").addEventListener("click", async () => {
     if (S.page === "projects") { const p = await createProject(""); go("projects", p.id); }
@@ -413,29 +428,72 @@
     if (e.key === "ArrowLeft") setMonth(C.addMonths(S.month, -step)); else if (e.key === "ArrowRight") setMonth(C.addMonths(S.month, step));
   });
   // переключатель «месяц / год» — выбор помнится для каждого места
-  const viewOf = (place) => localStorage.getItem("sheetaet_view_" + place) || "month";
-  function viewToggle(place) { const v = viewOf(place); return `<div class="view-toggle" data-place="${place}"><button class="chip ${v === "month" ? "is-on" : ""}" data-view="month">месяц</button><button class="chip ${v === "year" ? "is-on" : ""}" data-view="year">год</button></div>`; }
+  // по умолчанию — год; кнопки одинаковые везде: «год» слева, «месяц» справа, под названием периода
+  const viewOf = (place) => localStorage.getItem("sheetaet_view_" + place) || "year";
+  function viewToggle(place) { const v = viewOf(place); return `<div class="view-toggle" data-place="${place}"><button class="chip ${v === "year" ? "is-on" : ""}" data-view="year">год</button><button class="chip ${v === "month" ? "is-on" : ""}" data-view="month">месяц</button></div>`; }
+  // шапка периода: ‹ название › и под ним переключатель «год / месяц»
+  const periodHead = (place, mode) => `<div class="sh-month">${monthBar(mode)}${place ? viewToggle(place) : ""}</div>`;
   function wireViewToggle(root, rerender) { $$(".view-toggle [data-view]", root).forEach((b) => (b.onclick = () => { localStorage.setItem("sheetaet_view_" + b.parentElement.dataset.place, b.dataset.view); rerender(); })); }
 
   /* ---------- годовая таблица: 12 одинаковых колонок + ИТОГО ---------- */
   // rows: {label, values[12], total, cls, open, page, pct} | {sec: kindKey, label}
   function yearGrid(rows) {
     const keys = C.monthsOfYear(yearOf()), curKey = C.monthKey(C.todayStr());
+    const cur = (i) => (keys[i] === curKey ? " is-cur" : "");
     const cols = `<colgroup><col class="yt-c-l" />${keys.map(() => `<col class="yt-c-m" />`).join("")}<col class="yt-c-t" /></colgroup>`;
-    const head = `<thead><tr><th class="yt-l"></th>${C.MONTHS_COL.map((m, i) => `<th class="yt-m ${keys[i] === curKey ? "is-cur" : ""}" data-month="${keys[i]}" title="открыть месяц">${m}</th>`).join("")}<th class="yt-t">ИТОГО</th></tr></thead>`;
+    // строка месяцев — отдельной тонкой таблицей: закреплена сверху при прокрутке страницы и едет вбок вместе с таблицей
+    const head = `<thead><tr><th class="yt-l"></th>${C.MONTHS_COL.map((m, i) => `<th class="yt-m${cur(i)}" data-month="${keys[i]}" title="открыть месяц">${m}</th>`).join("")}<th class="yt-t">ИТОГО</th></tr></thead>`;
     const cell = (r, v) => (r.pct ? (v == null ? "" : String(v).replace(".", ",") + "%") : v ? C.formatCell(v) : "");
     const neg = (r, v) => (!r.pct && v < 0 ? " is-neg" : "");
     const body = rows.map((r) => {
-      if (r.sec) return `<tr class="yt-sec" style="--c:${K[r.sec]}"><td class="yt-l"><span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span></td><td colspan="13"></td></tr>`;
-      return `<tr class="${r.cls || ""}" ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v)}${keys[i] === curKey ? " is-cur" : ""}">${cell(r, v)}</td>`).join("")}<td class="yt-t${neg(r, r.total)}">${cell(r, r.total)}</td></tr>`;
+      // раздел — широкая цветная полоса во всю строку (как в карточке проекта), по ячейке на месяц, чтобы текущий месяц не терялся
+      if (r.sec) return `<tr class="yt-sec" style="--c:${K[r.sec]}"><td class="yt-l"><span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span></td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}<td class="yt-t"></td></tr>`;
+      const ed = r.edit ? ` data-edit="${esc(JSON.stringify(r.edit))}"` : "";
+      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}" ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${cur(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}>${cell(r, v)}</td>`).join("")}<td class="yt-t${neg(r, r.total)}">${cell(r, r.total)}</td></tr>`;
     }).join("");
-    return `<div class="yt-wrap"><table class="yt">${cols}${head}<tbody>${body}</tbody></table></div>`;
+    return `<div class="yt-block"><div class="yt-head"><table class="yt yt--head">${cols}${head}</table></div><div class="yt-wrap"><table class="yt">${cols}<tbody>${body}</tbody></table></div></div>`;
   }
-  function wireYearGrid(root, place) {
+  function wireYearGrid(root, place, rerender) {
     $$(".yt [data-month]", root).forEach((th) => (th.onclick = () => { localStorage.setItem("sheetaet_view_" + place, "month"); setMonth(th.dataset.month); }));
-    $$(".yt tr[data-open]", root).forEach((tr) => (tr.onclick = () => go(tr.dataset.page, tr.dataset.open)));
+    // строка со значениями, которые можно править: нажатие на сумму меняет сумму, на название — открывает карточку
+    $$(".yt tr[data-open]", root).forEach((tr) => (tr.onclick = (e) => { if (tr.dataset.edit && !e.target.closest(".yt-l")) return; go(tr.dataset.page, tr.dataset.open); }));
+    $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, rerender || (() => render()))));
+    $$(".yt-block", root).forEach((b) => {
+      const head = $(".yt-head", b), wrap = $(".yt-wrap", b);
+      // закрепить вплотную к верху области прокрутки (минус её внутренний отступ), чтобы над строкой месяцев ничего не просвечивало
+      const sc = b.closest(".sh-pane, .taskcard"); if (sc) head.style.top = -parseFloat(getComputedStyle(sc).paddingTop || 0) + "px";
+      wrap.addEventListener("scroll", () => { head.scrollLeft = wrap.scrollLeft; }, { passive: true });
+      head.addEventListener("wheel", (e) => { if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) { wrap.scrollLeft += e.deltaX; e.preventDefault(); } }, { passive: false });
+    });
   }
 
+  // правка одной ячейки годовой таблицы (проект или сотрудник): ровно эта сумма за этот месяц
+  async function editYearCell(spec, key, after) {
+    const match = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && C.inMonth(e.date, key)
+      && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? true : (e.title || "расход").trim() === spec.title);
+    const list = S.entries.filter(match);
+    if (list.length > 1) { toast(`в ${C.monthPrep(key)} здесь ${list.length} записи — открываю месяц`); localStorage.setItem("sheetaet_view_" + (S.page === "team" ? "employee" : "project"), "month"); setMonth(key); return; }
+    const cur = list[0], p = projById(spec.project_id), emp = spec.employee_id ? empById(spec.employee_id) : null;
+    const what = spec.kind === "salary" ? C.fullName(emp) || "выплата" : spec.kind === "income" ? "поступление" : spec.title;
+    const v = await inputBox({ title: what, sub: `${p ? (p.emoji || "📁") + " " + (p.name || "") + " · " : ""}${C.monthLabel(key)}. пусто — убрать сумму`, value: cur ? C.amountToInput(cur.amount_minor) : "", money: true, okLabel: "Сохранить" });
+    if (v === null) return;
+    const a = v.trim() === "" ? 0 : C.parseAmount(v);
+    if (a == null || a < 0) return toast("не похоже на сумму");
+    if (cur && !a) {
+      await safe(() => DB.remove("entries", cur.id)); S.entries = S.entries.filter((x) => x !== cur);
+      pushUndo("удаление суммы", async () => { const { id, created_at, updated_at, ...rest } = cur; const r = await DB.insert("entries", rest); S.entries.push(r); });
+    } else if (cur) {
+      const prev = cur.amount_minor; cur.amount_minor = a; await safe(() => DB.update("entries", cur.id, { amount_minor: a }));
+      pushUndo("изменение суммы", () => DB.update("entries", cur.id, { amount_minor: (cur.amount_minor = prev) }));
+    } else if (a) {
+      const day = spec.kind === "income" ? (p && p.income_day) || 10 : spec.kind === "salary" ? (emp && emp.pay_day) || 10 : spec.kind === "org_expense" ? 1 : 15;
+      const r = await safe(() => DB.insert("entries", { kind: spec.kind, project_id: spec.project_id, employee_id: spec.employee_id || null, title: spec.kind === "expense" || spec.kind === "org_expense" ? spec.title : null, amount_minor: a, date: C.dayInMonth(key, day) }));
+      S.entries.push(r);
+      if (spec.kind === "salary" && spec.project_id && spec.employee_id) await DB.addMember(spec.project_id, spec.employee_id);
+      pushUndo("добавление суммы", async () => { await DB.remove("entries", r.id); S.entries = S.entries.filter((x) => x !== r); });
+    }
+    after();
+  }
   const kindPill = (k, extra) => `<span class="k-pill ${extra || ""}" style="--c:${K[k]}">${KIND_LABEL[k]}</span>`;
   const byName = (a, b) => (a.last_name || a.first_name || "").localeCompare(b.last_name || b.first_name || "", "ru") || (a.first_name || "").localeCompare(b.first_name || "", "ru");
   const projSort = (a, b) => (a.sort ?? 1e9) - (b.sort ?? 1e9) || String(a.created_at || "").localeCompare(String(b.created_at || ""));
@@ -444,6 +502,7 @@
     const out = []; S.statuses.forEach((s) => out.push(...pool.filter((p) => p.status === s.id).sort(projSort))); out.push(...pool.filter((p) => !statusById(p.status))); return out;
   }
   const pm = (p) => C.projectMonth(p, S.entries, S.month, S.org);
+  const taxPct = () => String(C.taxRateOf(S.org)).replace(".", ",") + "%";
 
   /* ================= ЗАРПЛАТЫ И РАСХОДЫ: общая механика =================
      Новая выплата (человек в проекте) или новый расход (название в проекте) сами проставляются
@@ -488,13 +547,14 @@
   const ICON_TABLE = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M3.5 14.5h17M9.5 9.5v10"/></svg>`;
   function renderDashboard(main) {
     // переключатель «главные цифры / таблица» — иконки справа от заголовка страницы
-    $("#page-tools").innerHTML = `<button class="view-btn ${S.dashTab === "nums" ? "is-on" : ""}" data-tab="nums" title="главные цифры" aria-label="Главные цифры">${ICON_NUMS}</button><button class="view-btn ${S.dashTab === "table" ? "is-on" : ""}" data-tab="table" title="таблица" aria-label="Таблица">${ICON_TABLE}</button>`;
+    // «Сводка / Таблица» — сразу справа от заголовка; на телефоне только иконки, на компьютере иконка + название
+    $("#page-tools").innerHTML = `<button class="view-btn ${S.dashTab === "nums" ? "is-on" : ""}" data-tab="nums" title="Сводка" aria-label="Сводка">${ICON_NUMS}<span class="vb-label">Сводка</span></button><button class="view-btn ${S.dashTab === "table" ? "is-on" : ""}" data-tab="table" title="Таблица" aria-label="Таблица">${ICON_TABLE}<span class="vb-label">Таблица</span></button>`;
     $$("#page-tools [data-tab]").forEach((b) => (b.onclick = () => { S.dashTab = b.dataset.tab; localStorage.setItem("sheetaet_dash", S.dashTab); renderDashboard(main); }));
     const cur = C.orgMonth(S.projects, S.entries, S.month, S.org);
     const prevKey = C.addMonths(S.month, -1);
     const prev = C.orgMonth(S.projects, S.entries, prevKey, S.org);
     const yearMode = S.dashTab === "table" && viewOf("dash") === "year";
-    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${S.dashTab === "table" ? viewToggle("dash") : ""}${monthBar(yearMode ? "year" : "month")}<div id="dash-body"></div></div>`;
+    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead(S.dashTab === "table" ? "dash" : null, yearMode ? "year" : "month")}<div id="dash-body"></div></div>`;
     wireMonthBar(main); wireViewToggle(main, () => renderDashboard(main));
     const body = $("#dash-body", main);
     if (S.dashTab === "table" && yearMode) { body.innerHTML = yearGrid(dashYearRows()); wireYearGrid(body, "dash"); return; }
@@ -523,7 +583,7 @@
   function dashTable(o) {
     const per = periodOf("month");
     const row = (label, v, opts) => { opts = opts || {}; const sum = /is-sum/.test(opts.cls || ""); return `<div class="dt-row ${opts.cls || ""}" ${opts.open ? `data-open="${opts.open}" data-page="${opts.page}"` : ""}><span class="dt-l">${label}</span><span class="dt-v ${v < 0 ? "is-neg" : ""}">${sum ? fm(v) : fmz(v)}</span></div>`; };
-    const sec = (k, title) => `<div class="dt-sec" style="--c:${K[k]}"><span class="k-pill" style="--c:${K[k]}">${title}</span></div>`;
+    const sec = (k, title) => `<div class="ent-head dt-sec" style="--c:${K[k]}"><span class="k-pill" style="--c:${K[k]}">${title}</span></div>`;
     const byId = {}; o.per.forEach((x) => (byId[x.project.id] = x));
     const projs = listProjects(per);
     const people = listPeople(per);
@@ -531,7 +591,7 @@
     const open = (p) => ({ open: p.id, page: "projects" });
     let h = `<div class="dash-table">`;
     h += sec("income", "поступления") + projs.map((p) => row(pl(p), (byId[p.id] || {}).income || 0, open(p))).join("") + row("выручка до налогов", o.income, { cls: "is-sum" });
-    h += sec("tax", "налоги") + row("налоги · 7% от выручки", o.tax, { cls: "is-sum" }) + row("выручка после налогов", o.income - o.tax, { cls: "is-sum" });
+    h += sec("tax", "налоги") + row(`налоги · ${taxPct()} от выручки`, o.tax, { cls: "is-sum" }) + row("выручка после налогов", o.income - o.tax, { cls: "is-sum" });
     h += sec("salary", "зарплаты") + people.map((e) => row(esc(C.fullName(e) || "без имени"), C.employeeMonth(e.id, S.entries, S.month).total, { open: e.id, page: "team" })).join("") + row("зарплаты всего", o.salaries, { cls: "is-sum" });
     h += sec("expense", "прочие расходы проектов") + projs.map((p) => row(pl(p), (byId[p.id] || {}).other || 0, open(p))).join("") + row("итого", o.projOther, { cls: "is-sum" });
     h += sec("profit", "прибыль по проектам") + projs.map((p) => row(pl(p), (byId[p.id] || {}).profit || 0, open(p))).join("") + row("итого по проектам", o.projectsProfit, { cls: "is-sum" });
@@ -548,7 +608,7 @@
     const rows = [];
     rows.push({ sec: "income", label: "поступления" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "income"), open(p))));
     rows.push(yRow("выручка до налогов", sumOrg("income"), { cls: "is-sum" }));
-    rows.push({ sec: "tax", label: "налоги" }); rows.push(yRow("налоги · 7% от выручки", sumOrg("tax"), { cls: "is-sum" }));
+    rows.push({ sec: "tax", label: "налоги" }); rows.push(yRow(`налоги · ${taxPct()} от выручки`, sumOrg("tax"), { cls: "is-sum" }));
     rows.push(yRow("выручка после налогов", org.map((m) => m.income - m.tax), { cls: "is-sum" }));
     rows.push({ sec: "salary", label: "зарплаты" });
     listPeople(per).forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => C.employeeMonth(e.id, S.entries, k).total), { open: e.id, page: "team" })));
@@ -634,11 +694,11 @@
       <div class="proj-head sh-head"><button class="proj-emoji-btn" data-emoji>${esc(p.emoji || "📁")}</button><div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="Новый проект" id="p-name">${esc(p.name || "")}</div></div>
       <div class="taskcard-meta sh-meta"><button class="status-slot" data-status>${statusPill(p.status)}</button>
         <button class="meta-pill ${p.start_date ? "" : "is-empty"}" data-d="start_date"><span class="meta-cap">договор с</span>${p.start_date ? fmtD(p.start_date) : ""}</button>
-        <button class="meta-pill ${p.end_date ? "" : "is-empty"}" data-d="end_date"><span class="meta-cap">до</span>${p.end_date ? fmtD(p.end_date) : ""}</button>
+        <button class="meta-pill ${p.end_date || p.open_ended ? "" : "is-empty"}" data-d="end_date"><span class="meta-cap">до</span>${p.open_ended ? "бессрочно" : p.end_date ? fmtD(p.end_date) : ""}</button>
         <button class="meta-pill" data-incday title="ориентировочный день поступления денег каждый месяц"><span class="meta-cap">поступление ~</span>${p.income_day || 10}-го</button>
         ${p.archived ? `<span class="meta-pill is-empty">в архиве</span>` : ""}
         <button class="meta-pill meta-color" data-color title="цвет проекта"><span class="status-dot" style="--c:${p.color || PALETTE[0]}"></span></button></div>
-      <div class="sh-month">${viewToggle("project")}${monthBar(viewOf("project"))}</div>
+      ${periodHead("project", viewOf("project"))}
       <div id="p-tables"></div>
       <div id="p-note" class="taskcard-desc" contenteditable="true" data-placeholder="заметки по проекту…"></div>
     </div>
@@ -653,7 +713,13 @@
     $("[data-status]", card).onclick = async () => { const k = await pickStatus(p.status); if (!k) return; const prev = p.status; p.status = k; await safe(() => DB.update("projects", p.id, { status: k })); pushUndo("статус", () => DB.update("projects", p.id, { status: (p.status = prev) })); renderProject(main); };
     $("[data-color]", card).onclick = async () => { const c = await pickColor(p.color); if (!c) return; p.color = c; await safe(() => DB.update("projects", p.id, { color: c })); renderProject(main); };
     $("[data-incday]", card).onclick = async () => { const d = await pickDay(p.income_day || 10, "поступление денег", "ориентировочный день, когда заказчик платит каждый месяц. подставляется в дату новых поступлений"); if (!d) return; p.income_day = d; await safe(() => DB.update("projects", p.id, { income_day: d })); renderProject(main); };
-    $$("[data-d]", card).forEach((b) => (b.onclick = async () => { const v = await pickDate(p[b.dataset.d]); if (!v) return; p[b.dataset.d] = v; await safe(() => DB.update("projects", p.id, { [b.dataset.d]: v })); renderProject(main); }));
+    // дата окончания: под календарём «бессрочно» — второй даты нет, только пометка
+    $$("[data-d]", card).forEach((b) => (b.onclick = async () => {
+      const f = b.dataset.d, isEnd = f === "end_date";
+      const v = await pickDate(p[f], { openEnded: isEnd, isOpen: !!p.open_ended }); if (!v) return;
+      const patch = v === "open" ? { end_date: null, open_ended: true } : isEnd ? { end_date: v, open_ended: false } : { [f]: v };
+      Object.assign(p, patch); await safe(() => DB.update("projects", p.id, patch)); renderProject(main);
+    }));
     $("[data-done]", main).onclick = async () => { if (!p.name) { p.name = "Без названия"; await DB.update("projects", p.id, { name: p.name }); } go("projects"); };
     $("[data-arch]", main).onclick = async () => {
       const to = !p.archived;
@@ -669,20 +735,20 @@
     const ent = S.entries.filter((e) => e.project_id === p.id && e.date.startsWith(year));
     const rows = [];
     rows.push({ sec: "income", label: "доход" });
-    rows.push(yRow("Поступления", ym.map((m) => m.income)));
+    rows.push(yRow("Поступления", ym.map((m) => m.income), { edit: { kind: "income", project_id: p.id } }));
     rows.push({ sec: "salary", label: "зарплаты" });
     const sal = ent.filter((e) => e.kind === "salary");
     const people = new Set([...membersOf(p.id), ...sal.map((e) => e.employee_id).filter(Boolean)]);
     [...people].map(empById).filter((e) => e && (e.active !== false || sal.some((x) => x.employee_id === e.id))).sort(byName)
-      .forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => sumBy(sal.filter((x) => x.employee_id === e.id && C.inMonth(x.date, k)))), { open: e.id, page: "team" })));
+      .forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => sumBy(sal.filter((x) => x.employee_id === e.id && C.inMonth(x.date, k)))), { open: e.id, page: "team", edit: { kind: "salary", project_id: p.id, employee_id: e.id } })));
     rows.push(yRow("итого зарплаты", ym.map((m) => m.salaries), { cls: "is-sum" }));
     rows.push({ sec: "expense", label: "расход" });
     const exp = ent.filter((e) => e.kind === "expense");
     [...new Set(exp.map((e) => (e.title || "расход").trim()))].sort((a, b) => a.localeCompare(b, "ru"))
-      .forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(exp.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))))));
+      .forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(exp.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))), { edit: { kind: "expense", project_id: p.id, title: t } })));
     rows.push(yRow("итого расходы", ym.map((m) => m.other), { cls: "is-sum" }));
     rows.push({ sec: "tax", label: "налоги" });
-    rows.push(yRow("налоги · 7% от дохода", ym.map((m) => m.tax)));
+    rows.push(yRow(`налоги · ${taxPct()} от дохода`, ym.map((m) => m.tax)));
     rows.push(yRow("итого расходов", ym.map((m) => m.total), { cls: "is-sum" }));
     rows.push({ sec: "profit", label: "прибыль" });
     const pr = yRow("прибыль", ym.map((m) => m.profit), { cls: "yt-profit" }); rows.push(pr);
@@ -692,7 +758,7 @@
   }
   function renderProjectTables(p) {
     const box = $("#p-tables"); if (!box) return;
-    if (viewOf("project") === "year") { box.innerHTML = yearGrid(projectYearRows(p)) + `<p class="money-note yt-note">годовой вид — только просмотр. нажмите на месяц в шапке, чтобы его редактировать</p>`; wireYearGrid(box, "project"); return; }
+    if (viewOf("project") === "year") { box.innerHTML = yearGrid(projectYearRows(p)); wireYearGrid(box, "project", () => renderProjectTables(p)); return; }
     const m = pm(p);
     const src = S.entries.filter((e) => e.project_id === p.id && C.inMonth(e.date, C.addMonths(S.month, -1)));
     box.innerHTML = `
@@ -700,7 +766,7 @@
       <div class="ent-gap"></div>
       ${entrySection("salary", projectMonthRows(p, "salary"), "выплата")}
       ${entrySection("expense", projectMonthRows(p, "expense"), "расход")}
-      <div class="ent-sec ent-sec--auto"><div class="ent-head" style="--c:${K.tax}">${kindPill("tax")}<span class="ent-sum">${fm(m.tax)}</span></div><div class="ent-auto"><span>7% от дохода ${fmt(m.income)}</span></div></div>
+      <div class="ent-sec ent-sec--auto"><div class="ent-head" style="--c:${K.tax}">${kindPill("tax")}<span class="ent-sum">${fm(m.tax)}</span></div><div class="ent-auto"><span>${taxPct()} от дохода ${fmt(m.income)}</span></div></div>
       <div class="ent-total"><span>итого расходов</span><span>${fm(m.total)}</span></div>
       <div class="ent-profit"><div class="ent-profit-top">${kindPill("profit")}<span class="ent-profit-num ${m.profit < 0 ? "is-neg" : ""}">${fm(m.profit)}</span></div>
         <div class="ent-profit-sub">маржа ${String(m.margin).replace(".", ",")}% · цель <button class="ent-rate" data-rate>${String(m.rate).replace(".", ",")}%</button>: ${fmt(m.target)} · <span class="${m.vsTarget >= 0 ? "is-good" : "is-neg"}">${m.vsTarget >= 0 ? "выше цели на " + fmt(m.vsTarget) : "ниже на " + fmt(-m.vsTarget)}</span></div></div>
@@ -785,7 +851,7 @@
       <span class="emp-projs">${pr.slice(0, 3).map((p) => `<span class="proj-pill task-proj" title="${esc(p.name)}"><span class="proj-emoji">${esc(p.emoji || "📁")}</span><span class="proj-name">${esc(p.name)}</span></span>`).join("")}${pr.length > 3 ? `<span class="proj-pill task-proj emp-more" title="${esc(pr.slice(3).map((p) => p.name).join(", "))}">ещё ${pr.length - 3}</span>` : ""}</span>
       <span class="meta-pill emp-day">${C.dayLabel(r.day)}</span>
       <span class="emp-sum">${fmz(r.t)}</span></div></div>`; };
-    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${monthBar()}
+    main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead(null, "month")}
       <div class="emp-list">${rows.length ? rows.map(row).join("") : `<p class="empty">пока никого — добавьте по +</p>`}</div>
       <div class="fin-total emp-total"><span>зарплаты за ${C.MONTHS[+S.month.slice(5) - 1]}</span><span class="fin-sum">${fm(total)}</span></div></div>`;
     wireMonthBar(main);
@@ -848,7 +914,7 @@
       <div class="taskcard-meta sh-meta"><button class="meta-pill" data-day><span class="meta-cap">выплата</span>каждое ${e.pay_day}-е</button>
         <button class="status-slot" data-emp>${em ? `<span class="status-pill" style="--c:${em.c}"><span>${em.name}</span><span class="status-dot" style="--c:${em.c}"></span></span>` : `<span class="meta-pill is-empty">тип занятости</span>`}</button>
         ${e.active === false ? `<span class="meta-pill is-empty">в архиве</span>` : ""}</div>
-      <div class="sh-month">${viewToggle("employee")}${monthBar(yearMode ? "year" : "month")}</div>
+      ${periodHead("employee", yearMode ? "year" : "month")}
       <div id="e-body"></div>
       <div id="e-note" class="taskcard-desc" contenteditable="true" data-placeholder="реквизиты, паспортные данные, как платить…"></div>
     </div>
@@ -872,13 +938,13 @@
       const sal = S.entries.filter((x) => x.kind === "salary" && x.employee_id === e.id && x.date.startsWith(year));
       const pids = [...new Set([...projectsOf(e.id), ...sal.map((x) => x.project_id)])].map(projById).filter((p) => p && (!p.archived || sal.some((x) => x.project_id === p.id))).sort((a, b) => a.name.localeCompare(b.name, "ru"));
       const rows = [{ sec: "salary", label: "зарплаты" }];
-      pids.forEach((p) => rows.push(yRow(pl(p), ms.map((k) => sumBy(sal.filter((x) => x.project_id === p.id && C.inMonth(x.date, k)))), { open: p.id, page: "projects" })));
+      pids.forEach((p) => rows.push(yRow(pl(p), ms.map((k) => sumBy(sal.filter((x) => x.project_id === p.id && C.inMonth(x.date, k)))), { open: p.id, page: "projects", edit: { kind: "salary", project_id: p.id, employee_id: e.id } })));
       rows.push(yRow("итого", ms.map((k) => sumBy(sal.filter((x) => C.inMonth(x.date, k)))), { cls: "is-sum" }));
-      box.innerHTML = yearGrid(rows); wireYearGrid(box, "employee"); return;
+      box.innerHTML = yearGrid(rows); wireYearGrid(box, "employee", () => renderEmployeeBody(e, true)); return;
     }
     const mon = C.employeeMonth(e.id, S.entries, S.month);
     const pids = [...new Set([...projectsOf(e.id), ...mon.list.map((x) => x.project_id)])].map(projById).filter((p) => p && (!p.archived || mon.list.some((x) => x.project_id === p.id))).sort((a, b) => a.name.localeCompare(b.name, "ru"));
-    box.innerHTML = `<div class="ent-head emp-month">${kindPill("salary")}<span class="emp-month-sum">${fm(mon.total)}</span></div>
+    box.innerHTML = `<div class="ent-head emp-month" style="--c:${K.salary}">${kindPill("salary")}<span class="ent-sum">${fm(mon.total)}</span></div>
       <div class="emp-pays">${pids.map((p) => { const list = mon.list.filter((x) => x.project_id === p.id); const sum = sumBy(list); const d = list.length ? list.map((x) => x.date).sort()[0] : ""; return `<div class="swipeable emp-pay-row" data-pid="${p.id}"><div class="swipe-del">${TRASH}</div><div class="swipe-row emp-pay"><span class="emp-pay-name">${pl(p)}</span><span class="emp-pay-date">${d ? `<span class="ent-date">${C.dayLabel(d)}</span>` : ""}</span><span class="emp-pay-sum">${fmz(sum)}</span></div></div>`; }).join("")}
       </div><button class="proj-add-task ent-add" data-addp>+ проект</button>`;
     $$(".emp-pay-row", box).forEach((row) => {
@@ -905,44 +971,95 @@
   }
 
   /* ================= ОРГАНИЗАЦИЯ ================= */
+  // удалить из архива навсегда: проект — со всеми его суммами; человек — с его выплатами
+  async function deleteForever(kind, id) {
+    if (kind === "project") {
+      if (DEMO) { const d = Demo.get(); d.entries = d.entries.filter((e) => e.project_id !== id); d.members = d.members.filter((m) => m.project_id !== id); Demo.write(d); }
+      await safe(() => DB.remove("projects", id));
+      S.projects = S.projects.filter((p) => p.id !== id); S.entries = S.entries.filter((e) => e.project_id !== id); S.members = S.members.filter((m) => m.project_id !== id);
+    } else {
+      if (DEMO) { const d = Demo.get(); d.entries = d.entries.filter((e) => e.employee_id !== id); d.members = d.members.filter((m) => m.employee_id !== id); Demo.write(d); }
+      else await safe(() => q(sb.from("entries").delete().eq("org_id", S.org.id).eq("employee_id", id)));
+      await safe(() => DB.remove("employees", id));
+      S.employees = S.employees.filter((e) => e.id !== id); S.entries = S.entries.filter((e) => e.employee_id !== id); S.members = S.members.filter((m) => m.employee_id !== id);
+    }
+  }
+  // архив: два списка — проекты и люди; «вернуть» и «удалить» (навсегда, с подтверждением)
+  function archiveBox(after) {
+    const m = modal(`<div class="modal-title">архив</div><div class="arch-body scroll"></div><button class="modal-clear" data-ok>готово</button>`, "pick-modal arch-modal");
+    m._onClose = () => after && after();
+    const draw = () => {
+      const archP = S.projects.filter((p) => p.archived).sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru"));
+      const archE = S.employees.filter((e) => e.active === false).sort(byName);
+      const row = (kind, id, label) => `<div class="org-arch-row"><button class="org-arch-name" data-open="${kind}:${id}">${label}</button><button class="chip" data-back="${kind}:${id}">вернуть</button><button class="chip arch-del" data-del="${kind}:${id}">удалить</button></div>`;
+      $(".arch-body", m).innerHTML = `<div class="arch-head">проекты</div>${archP.length ? archP.map((p) => row("project", p.id, pl(p))).join("") : `<p class="empty">пусто</p>`}
+        <div class="arch-head">люди</div>${archE.length ? archE.map((e) => row("person", e.id, esc(C.fullName(e) || "без имени"))).join("") : `<p class="empty">пусто</p>`}`;
+      $$("[data-open]", m).forEach((b) => (b.onclick = () => { const [k, id] = b.dataset.open.split(":"); m._onClose = null; m.remove(); go(k === "project" ? "projects" : "team", id); }));
+      $$("[data-back]", m).forEach((b) => (b.onclick = async () => {
+        const [k, id] = b.dataset.back.split(":");
+        if (k === "project") { const p = projById(id); p.archived = false; await safe(() => DB.update("projects", id, { archived: false })); toast("проект возвращён"); }
+        else { const e = empById(id); e.active = true; await safe(() => DB.update("employees", id, { active: true })); toast("сотрудник возвращён"); }
+        draw();
+      }));
+      $$("[data-del]", m).forEach((b) => (b.onclick = async () => {
+        const [k, id] = b.dataset.del.split(":");
+        const name = k === "project" ? (projById(id) || {}).name || "без названия" : C.fullName(empById(id)) || "без имени";
+        const ok = await confirmBox(`Удалить «${name}» навсегда?`, k === "project" ? "проект и все его суммы удалятся без возможности вернуть" : "человек и все его выплаты во всех проектах удалятся без возможности вернуть", "Удалить навсегда");
+        if (!ok) return;
+        await deleteForever(k === "project" ? "project" : "person", id); toast("удалено навсегда"); draw();
+      }));
+    };
+    $("[data-ok]", m).onclick = () => close(m);
+    draw();
+  }
+  function orgYearRows() {
+    const year = yearOf(), ms = C.monthsOfYear(year);
+    const fx = S.entries.filter((e) => e.kind === "org_expense" && e.date.startsWith(year));
+    const rows = [{ sec: "fixed", label: "постоянные расходы" }];
+    fixedTitles().forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(fx.filter((e) => (e.title || "расход").trim() === t && C.inMonth(e.date, k)))), { edit: { kind: "org_expense", project_id: null, title: t } })));
+    rows.push(yRow("итого", ms.map((k) => sumBy(fx.filter((e) => C.inMonth(e.date, k)))), { cls: "is-sum" }));
+    return rows;
+  }
   function renderOrg(main) {
     const o = S.org;
     const prevList = S.entries.filter((x) => x.kind === "org_expense" && C.inMonth(x.date, C.addMonths(S.month, -1)));
     const isOwner = DEMO || (S.people || []).some((p) => S.user && p.email === S.user.email && p.role === "owner");
-    const archP = S.projects.filter((p) => p.archived).sort((a, b) => (a.name || "").localeCompare(b.name || "", "ru"));
-    const archE = S.employees.filter((e) => e.active === false).sort(byName);
-    main.innerHTML = `<div class="taskcard scroll sh-card">
+    const archN = S.projects.filter((p) => p.archived).length + S.employees.filter((e) => e.active === false).length;
+    const yearMode = viewOf("org") === "year";
+    main.innerHTML = `<div class="taskcard scroll sh-card sh-card--nav">
       <div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="название организации" id="o-name">${esc(o.name || "")}</div>
-      <div class="taskcard-meta sh-meta"><span class="meta-pill"><span class="meta-cap">адрес</span>/${esc(o.slug)}/</span><span class="meta-pill"><span class="meta-cap">налог</span>7% от дохода проекта</span>
-        <button class="meta-pill" data-rate><span class="meta-cap">цель по прибыли</span>${String(o.profit_rate ?? 20).replace(".", ",")}%</button></div>
-      <div class="sh-month">${monthBar()}</div>
+      <div class="taskcard-meta sh-meta"><span class="meta-pill"><span class="meta-cap">адрес</span>/${esc(o.slug)}/</span>
+        <button class="meta-pill" data-tax title="ставка налога от дохода проекта"><span class="meta-cap">налог</span>${taxPct()} от дохода проекта</button>
+        <button class="meta-pill" data-rate><span class="meta-cap">цель по прибыли</span>${String(o.profit_rate ?? 20).replace(".", ",")}%</button>
+        <button class="meta-pill" data-arch><span class="meta-cap">архив</span>${archN || ""}</button></div>
+      ${periodHead("org", yearMode ? "year" : "month")}
       <div id="o-fixed"></div>
-      <div class="proj-tasks"><div class="proj-tasks-head">архив</div>
-        <div class="money-note">проекты и люди из архива хранятся бессрочно со всеми суммами. «вернуть» — снова в списках.</div>
-        ${archP.length || archE.length ? `<div class="org-arch">${archP.map((p) => `<div class="org-arch-row"><button class="org-arch-name" data-openp="${p.id}">${pl(p)}</button><span class="pay-role">проект</span><button class="chip" data-unp="${p.id}">вернуть</button></div>`).join("")}${archE.map((e) => `<div class="org-arch-row"><button class="org-arch-name" data-opene="${e.id}">${esc(C.fullName(e) || "без имени")}</button><span class="pay-role">сотрудник</span><button class="chip" data-une="${e.id}">вернуть</button></div>`).join("")}</div>` : `<p class="empty">архив пуст</p>`}</div>
       <div class="proj-tasks"><div class="proj-tasks-head">участники</div>
         ${(S.people || []).map((p) => `<div class="org-person"><span>${esc(p.email)}</span><span class="pay-role">${p.role === "owner" ? "владелец" : "участник"}</span></div>`).join("")}</div>
-      <div class="pane-head-tools org-actions">${isOwner && !DEMO ? `<button class="chip" data-pass>пароль организации</button>` : ""}<button class="chip" data-theme>тема ◐</button><button class="chip" data-out>выйти</button></div>
+      ${isOwner && !DEMO ? `<div class="pane-head-tools org-actions"><button class="chip" data-pass>пароль организации</button></div>` : ""}
       ${DEMO ? `<p class="money-note">демо-режим: данные хранятся только в этом браузере</p>` : ""}
     </div>`;
     const box = $("#o-fixed");
     const draw = () => {
+      if (viewOf("org") === "year") { box.innerHTML = yearGrid(orgYearRows()); wireYearGrid(box, "org", draw); return; }
       const l = S.entries.filter((x) => x.kind === "org_expense" && C.inMonth(x.date, S.month)).sort((a, b) => a.date.localeCompare(b.date)).concat(S.drafts.filter((d) => d.kind === "org_expense" && C.inMonth(d.date, S.month)));
-      box.innerHTML = `<div class="money-note org-fixed-note">постоянные расходы организации — не относятся к проектам (офис, бухгалтер, банк, подписки). входят в «прочие расходы» и в чистую прибыль.</div>${entrySection("org_expense", l, "постоянный расход")}${prevList.length ? `<div class="pane-head-tools ent-copy"><button class="chip" data-copy>скопировать из прошлого месяца</button></div>` : ""}`;
+      box.innerHTML = `${entrySection("org_expense", l, "постоянный расход")}${prevList.length ? `<div class="pane-head-tools ent-copy"><button class="chip" data-copy>скопировать из прошлого месяца</button></div>` : ""}`;
       wireEntries(box, null, draw);
       const cp = $("[data-copy]", box); if (cp) cp.onclick = () => copyFromPrev(prevList, draw);
     };
     draw();
-    wireMonthBar(main);
-    $$("[data-unp]", main).forEach((b) => (b.onclick = async () => { const p = projById(b.dataset.unp); p.archived = false; await safe(() => DB.update("projects", p.id, { archived: false })); toast("проект возвращён"); renderOrg(main); }));
-    $$("[data-une]", main).forEach((b) => (b.onclick = async () => { const e = empById(b.dataset.une); e.active = true; await safe(() => DB.update("employees", e.id, { active: true })); toast("сотрудник возвращён"); renderOrg(main); }));
-    $$("[data-openp]", main).forEach((b) => (b.onclick = () => go("projects", b.dataset.openp)));
-    $$("[data-opene]", main).forEach((b) => (b.onclick = () => go("team", b.dataset.opene)));
+    wireMonthBar(main); wireViewToggle(main, () => renderOrg(main));
+    $("[data-arch]", main).onclick = () => archiveBox(() => renderOrg(main));
     $("#o-name").oninput = dbg(async () => { await safe(() => DB.updateOrg({ name: $("#o-name").innerText.trim() })); }, 500);
+    $("[data-tax]", main).onclick = async () => {
+      const v = await inputBox({ title: "ставка налога, %", sub: "от дохода каждого проекта. пересчитаются все месяцы и все таблицы", value: String(C.taxRateOf(o)).replace(".", ","), okLabel: "Сохранить" });
+      if (v === null) return; const n = Number(v.replace(",", ".").replace("%", "").trim());
+      if (!Number.isFinite(n) || n < 0 || n > 100) return toast("от 0 до 100");
+      const prev = o.tax_rate; await safe(() => DB.updateOrg({ tax_rate: n }));
+      pushUndo("ставка налога", () => DB.updateOrg({ tax_rate: prev })); toast(`налог ${String(n).replace(".", ",")}%`); renderOrg(main);
+    };
     $("[data-rate]", main).onclick = async () => { const v = await inputBox({ title: "цель по прибыли, %", sub: "для новых проектов: % от дохода после налогов", value: String(o.profit_rate ?? 20) }); if (v === null) return; const n = Number(v.replace(",", ".")); if (!Number.isFinite(n) || n < 0 || n > 100) return toast("от 0 до 100"); await safe(() => DB.updateOrg({ profit_rate: n })); renderOrg(main); };
     const pw = $("[data-pass]", main); if (pw) pw.onclick = async () => { const v = await inputBox({ title: "пароль организации", sub: "его спрашивают перед личным входом на /" + o.slug + "/. минимум 6 символов", type: "password", okLabel: "Сохранить" }); if (!v) return; try { await q(sb.rpc("org_set_password", { p_org: o.id, p_password: v })); toast("пароль организации сохранён"); } catch (err) { toast(err.message); } };
-    $("[data-theme]", main).onclick = () => $("#theme-btn").click();
-    $("[data-out]", main).onclick = async () => { if (DEMO) { localStorage.removeItem(DEMO_KEY); toast("демо-данные сброшены"); location.reload(); return; } if (await confirmBox("Выйти из аккаунта?")) logout(); };
   }
 
   // SPA-фолбэк GitHub Pages: 404.html сохранил исходный адрес

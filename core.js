@@ -70,18 +70,21 @@
   function plural(n, one, few, many) { const a = Math.abs(n) % 100, b = a % 10; if (a > 10 && a < 20) return many; if (b > 1 && b < 5) return few; if (b === 1) return one; return many; }
 
   /* ---------- экономика проекта за месяц (§5) ---------- */
+  // ставка налога — из настроек организации (меняется в карточке организации), по умолчанию 7%
+  const taxRateOf = (org) => { const n = org && org.tax_rate != null ? Number(org.tax_rate) : TAX_RATE; return Number.isFinite(n) ? n : TAX_RATE; };
   const sum = (list) => list.reduce((s, e) => s + e.amount_minor, 0);
   function projectMonth(project, entries, key, org) {
     const mine = entries.filter((e) => e.project_id === project.id && inMonth(e.date, key));
     const D = sum(mine.filter((e) => e.kind === "income"));
     const S = sum(mine.filter((e) => e.kind === "salary"));
     const O = sum(mine.filter((e) => e.kind === "expense"));
-    const T = Math.round((D * TAX_RATE) / 100);
+    const taxRate = taxRateOf(org);
+    const T = Math.round((D * taxRate) / 100);
     const total = S + O + T;
     const profit = D - total;
     const rate = project.profit_rate != null ? Number(project.profit_rate) : (org && org.profit_rate != null ? Number(org.profit_rate) : DEFAULT_PROFIT_RATE);
     const target = Math.round(((D - T) * rate) / 100);
-    return { income: D, salaries: S, other: O, tax: T, total, profit, margin: pct(profit, D), rate, target, vsTarget: profit - target };
+    return { income: D, salaries: S, other: O, tax: T, taxRate, total, profit, margin: pct(profit, D), rate, target, vsTarget: profit - target };
   }
   // Организация за месяц: суммы по проектам + постоянные расходы
   function orgMonth(projects, entries, key, org) {
@@ -136,7 +139,7 @@
   const fullName = (e) => [e.first_name, e.last_name].filter(Boolean).join(" ").trim();
 
   const api = {
-    TAX_RATE, DEFAULT_PROFIT_RATE, NNBSP, NBSP, MINUS,
+    TAX_RATE, DEFAULT_PROFIT_RATE, taxRateOf, NNBSP, NBSP, MINUS,
     parseAmount, formatMoney, formatMoneyHTML, amountToInput, pct,
     daysInMonth, monthKey, monthStart, addMonths, inMonth, dayInMonth, todayStr,
     MONTHS, MONTHS_GEN, MONTHS_SHORT, monthLabel, monthPrep, dayLabel, dayLong, plural,

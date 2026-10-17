@@ -43,8 +43,13 @@
       a0 = a1;
     });
     const legend = list.slice().sort((a, b) => b.value - a.value).map((s) => `<div class="ch-leg"><span class="ch-dot" style="--c:${s.c}"></span><span class="ch-leg-name">${s.emoji ? esc(s.emoji) + " " : ""}${esc(s.label)}</span><span class="ch-leg-val">${C().formatMoneyHTML(s.value)}</span><span class="ch-leg-pct">${C().pct(s.value, total).toString().replace(".", ",")}%</span></div>`).join("");
+    // подпись в центре: размер считается от длины строки в единицах viewBox, поэтому при любом масштабе
+    // и ширине окна текст целиком внутри отверстия (диаметр 2r) с запасом и не касается кольца
+    const val = C().formatMoney(center.value).replace(/,\d\d/, "");
+    const fit = (str, em, max) => Math.min(max, (r * 2 * 0.64) / (str.length * em));
+    const fsV = fit(val, 0.62, 15).toFixed(2), fsL = fit(center.label, 0.55, 8.5).toFixed(2);
     return `<div class="ch-donut"><svg viewBox="0 0 180 180" class="ch-svg" role="img" aria-label="${esc(center.label)}">${paths}${labels}
-        <text x="90" y="84" class="ch-c-label">${esc(center.label)}</text><text x="90" y="104" class="ch-c-val">${esc(C().formatMoney(center.value).replace(/,\d\d/, ""))}</text></svg>
+        <text x="90" y="${(90 - fsV * 0.55).toFixed(1)}" class="ch-c-label" style="font-size:${fsL}px">${esc(center.label)}</text><text x="90" y="${(90 + fsV * 0.75).toFixed(1)}" class="ch-c-val" style="font-size:${fsV}px">${esc(val)}</text></svg>
       <div class="ch-legend">${legend}</div></div>`;
   }
   window.SheetCharts = { bars, donut };

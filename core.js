@@ -91,12 +91,14 @@
     const per = projects.map((p) => ({ project: p, ...projectMonth(p, entries, key, org) }));
     const fixed = sum(entries.filter((e) => e.kind === "org_expense" && inMonth(e.date, key)));
     const income = per.reduce((s, x) => s + x.income, 0);
-    const salaries = per.reduce((s, x) => s + x.salaries, 0);
+    // зарплата без проекта (просто человеку) — в зарплатах и расходах организации, но не в прибыли проектов
+    const looseSalaries = sum(entries.filter((e) => e.kind === "salary" && !e.project_id && inMonth(e.date, key)));
+    const salaries = per.reduce((s, x) => s + x.salaries, 0) + looseSalaries;
     const tax = per.reduce((s, x) => s + x.tax, 0);
     const projOther = per.reduce((s, x) => s + x.other, 0);
     const other = projOther + fixed;
     const expense = salaries + tax + other;
-    return { per, income, salaries, tax, projOther, fixed, other, expense, profit: income - expense, projectsProfit: per.reduce((s, x) => s + x.profit, 0) };
+    return { per, income, salaries, looseSalaries, tax, projOther, fixed, other, expense, profit: income - expense, projectsProfit: per.reduce((s, x) => s + x.profit, 0) };
   }
   // Зарплата сотрудника за месяц = Σ его выплат во всех проектах
   function employeeMonth(employeeId, entries, key) {

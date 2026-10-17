@@ -568,7 +568,7 @@
   async function fillToYearEnd(src) {
     // зарплаты и расходы проекта, а также постоянные расходы организации
     if (!(src.kind === "salary" || src.kind === "expense" || src.kind === "org_expense")) return [];
-    if (src.kind !== "org_expense" && !src.project_id) return [];
+    if (src.kind !== "org_expense" && !src.project_id && !(src.kind === "salary" && src.employee_id)) return [];
     const key = C.monthKey(src.date), day = +src.date.slice(8), rows = [];
     for (let k = C.addMonths(key, 1); k.slice(0, 4) === key.slice(0, 4); k = C.addMonths(k, 1)) {
       if (S.entries.some((e) => sameLine(e, src) && C.inMonth(e.date, k))) continue;
@@ -1035,6 +1035,7 @@
       $("input", m).oninput = draw; draw(); setTimeout(() => $("input", m).focus(), 40);
     });
   }
+  const NOPROJ = { id: null, emoji: "👤", name: "без проекта" };
   // выплата человеку в проекте за месяц: сумма + дата (создать или изменить)
   function payBox(e, p, current) {
     return new Promise((res) => {
@@ -1043,13 +1044,14 @@
         <div class="pay-amount-wrap"><input class="field field--amount" inputmode="decimal" placeholder="сумма" value="${current ? esc(C.amountToInput(current.amount_minor)) : ""}" /><span class="pay-cur">₽</span></div>
         <button class="meta-pill" data-date><span class="meta-cap">дата</span>${C.dayLabel(date)}</button>
         <div class="minput-err" hidden></div>
-        <div class="form-actions"><button class="btn btn--solid" data-y>${current ? "Сохранить" : "Добавить"}</button><button class="btn" data-open>Открыть проект</button></div>`);
+        <div class="form-actions"><button class="btn btn--solid" data-y>${current ? "Сохранить" : "Добавить"}</button>${p.id ? `<button class="btn" data-open>Открыть проект</button>` : `<button class="btn" data-n>Отмена</button>`}</div>`);
       m._onClose = () => res(null);
       const inp = $("input", m); setTimeout(() => inp.focus(), 40);
       $("[data-date]", m).onclick = async () => { const v = await pickDate(date); if (v) { date = v; $("[data-date]", m).innerHTML = `<span class="meta-cap">дата</span>${C.dayLabel(date)}`; } };
       const ok = () => { const a = C.parseAmount(inp.value); if (!a) { const er = $(".minput-err", m); er.textContent = "введите сумму"; er.hidden = false; return; } m._onClose = null; m.remove(); res({ amount_minor: a, date }); };
       $("[data-y]", m).onclick = ok; inp.onkeydown = (ev) => { if (ev.key === "Enter") ok(); };
-      $("[data-open]", m).onclick = () => { m._onClose = null; m.remove(); res(null); go("projects", p.id); };
+      const op = $("[data-open]", m); if (op) op.onclick = () => { m._onClose = null; m.remove(); res(null); go("projects", p.id); };
+      const cn = $("[data-n]", m); if (cn) cn.onclick = () => close(m);
     });
   }
   function renderEmployee(main) {
@@ -1085,6 +1087,7 @@
       const sal = S.entries.filter((x) => x.kind === "salary" && x.employee_id === e.id && x.date.startsWith(year));
       const pids = [...new Set([...projectsOf(e.id), ...sal.map((x) => x.project_id)])].map(projById).filter((p) => p && (!p.archived || sal.some((x) => x.project_id === p.id))).sort((a, b) => a.name.localeCompare(b.name, "ru"));
       const rows = [{ sec: "salary", label: "зарплаты" }];
+      rows.push(yRow("без проекта", ms.map((k) => sumBy(sal.filter((x) => !x.project_id && C.inMonth(x.date, k)))), { edit: { kind: "salary", project_id: null, employee_id: e.id } }));
       pids.forEach((p) => rows.push(yRow(pl(p), ms.map((k) => sumBy(sal.filter((x) => x.project_id === p.id && C.inMonth(x.date, k)))), { open: p.id, page: "projects", edit: { kind: "salary", project_id: p.id, employee_id: e.id } })));
       rows.push(yRow("итого", ms.map((k) => sumBy(sal.filter((x) => C.inMonth(x.date, k)))), { cls: "is-sum" }));
       box.innerHTML = yearGrid(rows); wireYearGrid(box, "employee", () => renderEmployeeBody(e, true)); return;
@@ -1092,9 +1095,19 @@
     const mon = C.employeeMonth(e.id, S.entries, S.month);
     const pids = [...new Set([...projectsOf(e.id), ...mon.list.map((x) => x.project_id)])].map(projById).filter((p) => p && (!p.archived || mon.list.some((x) => x.project_id === p.id))).sort((a, b) => a.name.localeCompare(b.name, "ru"));
     box.innerHTML = `<div class="ent-head emp-month" style="--c:${K.salary}">${kindPill("salary")}<span class="ent-sum">${fm(mon.total)}</span></div>
-      <div class="emp-pays">${pids.map((p) => { const list = mon.list.filter((x) => x.project_id === p.id); const sum = sumBy(list); const d = list.length ? list.map((x) => x.date).sort()[0] : ""; return `<div class="swipeable emp-pay-row" data-pid="${p.id}"><div class="swipe-del">${TRASH}</div><div class="swipe-row emp-pay"><span class="emp-pay-name">${pl(p)}</span><span class="emp-pay-date">${d ? `<span class="ent-date">${C.dayLabel(d)}</span>` : ""}</span><span class="emp-pay-sum">${fmz(sum)}</span></div></div>`; }).join("")}
+      <div class="emp-pays">${(() => { const list = mon.list.filter((x) => !x.project_id); const d = list.length ? list.map((x) => x.date).sort()[0] : ""; return `<div class="emp-pay-row emp-pay-row--free" data-pid=""><div class="swipe-row emp-pay"><span class="emp-pay-name emp-free">без проекта</span><span class="emp-pay-date">${d ? `<span class="ent-date">${C.dayLabel(d)}</span>` : ""}</span><span class="emp-pay-sum">${fmz(sumBy(list))}</span></div></div>`; })()}${pids.map((p) => { const list = mon.list.filter((x) => x.project_id === p.id); const sum = sumBy(list); const d = list.length ? list.map((x) => x.date).sort()[0] : ""; return `<div class="swipeable emp-pay-row" data-pid="${p.id}"><div class="swipe-del">${TRASH}</div><div class="swipe-row emp-pay"><span class="emp-pay-name">${pl(p)}</span><span class="emp-pay-date">${d ? `<span class="ent-date">${C.dayLabel(d)}</span>` : ""}</span><span class="emp-pay-sum">${fmz(sum)}</span></div></div>`; }).join("")}
       </div><button class="proj-add-task ent-add" data-addp>+ проект</button>`;
-    $$(".emp-pay-row", box).forEach((row) => {
+    // зарплата без проекта: та же форма суммы и даты; новая — проставляется до декабря, как в проектах
+    const free = $(".emp-pay-row--free", box);
+    if (free) free.onclick = async () => {
+      const list = mon.list.filter((x) => !x.project_id);
+      if (list.length > 1) { localStorage.setItem("sheetaet_view_employee", "year"); renderEmployee($("#main")); return toast("в этом месяце несколько выплат — правьте в годовом виде"); }
+      const r = await payBox(e, NOPROJ, list[0]); if (!r) return;
+      if (list[0]) { Object.assign(list[0], r); await safe(() => DB.update("entries", list[0].id, r)); }
+      else await createEntry({ kind: "salary", project_id: null, employee_id: e.id, title: null, ...r });
+      renderEmployeeBody(e, false);
+    };
+    $$(".emp-pay-row:not(.emp-pay-row--free)", box).forEach((row) => {
       const p = projById(row.dataset.pid);
       row.onclick = async () => {
         if (justSwiped) return;

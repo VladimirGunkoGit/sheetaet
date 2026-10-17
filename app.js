@@ -614,14 +614,22 @@
 
   /* ================= ЗАРПЛАТЫ И РАСХОДЫ: общая механика =================
      Новая выплата (человек в проекте) или новый расход (название в проекте) сами проставляются
-     во все следующие месяцы до конца года — с той же суммой и тем же днём, только там, где их ещё нет. */
+     во все следующие месяцы до окончания договора проекта (или до конца года) — с той же суммой и тем же днём, только там, где их ещё нет. */
   const sameLine = (a, b) => (a.project_id || null) === (b.project_id || null) && a.kind === b.kind && (a.kind === "salary" ? a.employee_id === b.employee_id : (a.title || "").trim().toLowerCase() === (b.title || "").trim().toLowerCase());
+  // до какого месяца проставлять: до месяца окончания договора проекта (если дата указана и договор не бессрочный,
+  // в том числе на следующий год, но не дальше 3 лет), иначе — до декабря этого года
+  function fillUntil(src) {
+    const key = C.monthKey(src.date), p = src.project_id ? projById(src.project_id) : null;
+    if (p && p.end_date && !p.open_ended) { const end = C.monthKey(p.end_date), max = C.addMonths(key, 36); return end < max ? end : max; }
+    return key.slice(0, 4) + "-12";
+  }
   async function fillToYearEnd(src) {
     // зарплаты и расходы проекта, а также постоянные расходы организации
     if (!(src.kind === "salary" || src.kind === "expense" || src.kind === "org_expense")) return [];
     if (src.kind !== "org_expense" && !src.project_id && !(src.kind === "salary" && src.employee_id)) return [];
     const key = C.monthKey(src.date), day = +src.date.slice(8), rows = [];
-    for (let k = C.addMonths(key, 1); k.slice(0, 4) === key.slice(0, 4); k = C.addMonths(k, 1)) {
+    const until = fillUntil(src);
+    for (let k = C.addMonths(key, 1); k <= until; k = C.addMonths(k, 1)) {
       if (S.entries.some((e) => sameLine(e, src) && C.inMonth(e.date, k))) continue;
       rows.push({ kind: src.kind, project_id: src.project_id, employee_id: src.employee_id || null, title: src.title || null, amount_minor: src.amount_minor, date: C.dayInMonth(k, day) });
     }
@@ -637,8 +645,10 @@
     if (ins.kind === "salary" && ins.employee_id && ins.project_id) await DB.addMember(ins.project_id, ins.employee_id);
     const filled = await fillToYearEnd(ins);
     const all = [ins, ...filled];
-    pushUndo(filled.length ? "добавление и проставление до декабря" : "добавление", async () => { for (const r of all) await DB.remove("entries", r.id); S.entries = S.entries.filter((e) => !all.includes(e)); });
-    if (filled.length) toast(`проставлено до декабря: ещё ${filled.length} ${C.plural(filled.length, "месяц", "месяца", "месяцев")}`);
+    const lastKey = filled.length ? C.monthKey(filled.map((r) => r.date).sort().pop()) : null;
+    const untilLabel = lastKey ? C.MONTHS_GEN[+lastKey.slice(5) - 1] + (lastKey.slice(0, 4) === C.monthKey(ins.date).slice(0, 4) ? "" : " " + lastKey.slice(0, 4)) : "";
+    pushUndo(filled.length ? "добавление и проставление вперёд" : "добавление", async () => { for (const r of all) await DB.remove("entries", r.id); S.entries = S.entries.filter((e) => !all.includes(e)); });
+    if (filled.length) toast(`проставлено до ${untilLabel}: ещё ${filled.length} ${C.plural(filled.length, "месяц", "месяца", "месяцев")}`);
     return all;
   }
   // убрать человека из проекта: участие + его выплаты в проекте начиная с месяца fromKey
@@ -1191,7 +1201,7 @@
   function payBox(e, p, current) {
     return new Promise((res) => {
       let date = current ? current.date : C.dayInMonth(S.month, e.pay_day);
-      const m = modal(`<div class="modal-title">${esc(p.emoji || "📁")} ${esc(p.name || "проект")}</div><div class="confirm-sub">${esc(C.fullName(e))} · ${C.monthLabel(S.month)}${current ? "" : " — новая выплата проставится до конца года"}</div>
+      const m = modal(`<div class="modal-title">${esc(p.emoji || "📁")} ${esc(p.name || "проект")}</div><div class="confirm-sub">${esc(C.fullName(e))} · ${C.monthLabel(S.month)}${current ? "" : p.end_date && !p.open_ended ? " — новая выплата проставится до " + C.MONTHS_GEN[+p.end_date.slice(5, 7) - 1] + " " + p.end_date.slice(0, 4) : " — новая выплата проставится до конца года"}</div>
         <div class="pay-amount-wrap"><input class="field field--amount" inputmode="decimal" placeholder="сумма" value="${current ? esc(C.amountToInput(current.amount_minor)) : ""}" /><span class="pay-cur">₽</span></div>
         <button class="meta-pill" data-date><span class="meta-cap">дата</span>${C.dayLabel(date)}</button>
         <div class="minput-err" hidden></div>

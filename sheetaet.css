@@ -648,3 +648,5 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 /* полное название организации под заголовком проекта: маленький текст, пустое — светло-серая подсказка */
 .sh-fullname{ margin:2px 0 4px; font-size:var(--fs-body); line-height:1.35; color:var(--text-soft); outline:none; min-height:1.35em; word-break:break-word; cursor:text; }
 .sh-fullname:empty::before{ content:attr(data-placeholder); color:var(--muted); opacity:.55; }
+/* окно нового статуса: предпросмотр плашки */
+.statusform-preview{ display:flex; justify-content:center; padding:2px 0 4px; }

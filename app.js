@@ -196,6 +196,25 @@
   }
   const statusDot = (s) => `<span class="status-dot" style="--c:${s ? s.c : "150,153,163"}"></span>`;
   const statusPill = (id) => { const s = statusById(id); return `<span class="status-pill" style="--c:${s ? s.c : "150,153,163"}"><span>${esc(s ? s.name : "без статуса")}</span>${statusDot(s)}</span>`; };
+  // новый статус: название + цвет огонька (палитра как у проектов), сверху — живой предпросмотр плашки
+  function statusForm(c0) {
+    return new Promise((res) => {
+      let c = c0;
+      const m = modal(`<div class="modal-title">новый статус</div>
+        <div class="statusform-preview"><span class="status-pill" style="--c:${c}"><span data-pv>название</span><span class="status-dot" style="--c:${c}"></span></span></div>
+        <input class="field" maxlength="40" placeholder="название" />
+        <div class="statusform-swatches">${PALETTE.map((x) => `<button class="swatch ${x === c ? "is-cur" : ""}" data-c="${x}" style="--c:${x}" aria-label="цвет"><span class="status-dot"></span></button>`).join("")}</div>
+        <div class="form-actions"><button class="btn btn--solid" data-y>Создать</button><button class="btn" data-n>Отмена</button></div>`);
+      m._onClose = () => res(null);
+      const inp = $("input", m), pill = $(".statusform-preview .status-pill", m);
+      setTimeout(() => inp.focus(), 40);
+      inp.oninput = () => { $("[data-pv]", m).textContent = inp.value.trim() || "название"; };
+      $$("[data-c]", m).forEach((b) => (b.onclick = () => { c = b.dataset.c; $$("[data-c]", m).forEach((x) => x.classList.toggle("is-cur", x === b)); pill.style.setProperty("--c", c); $(".status-dot", pill).style.setProperty("--c", c); inp.focus(); }));
+      const ok = () => { if (!inp.value.trim()) { inp.focus(); return; } m._onClose = null; m.remove(); res({ name: inp.value.trim(), c }); };
+      $("[data-y]", m).onclick = ok; inp.onkeydown = (e) => { if (e.key === "Enter") ok(); };
+      $("[data-n]", m).onclick = () => close(m);
+    });
+  }
   function pickStatus(cur) {
     return new Promise((res) => {
       const draw = () => {
@@ -207,8 +226,8 @@
           m._onClose = null; m.remove(); res(b.dataset.k);
         }));
         $("[data-add]", m).onclick = async () => {
-          const name = await inputBox({ title: "новый статус", placeholder: "название" }); if (!name || !name.trim()) return;
-          const c = PALETTE[(S.statuses.length * 5) % PALETTE.length];
+          const f = await statusForm(PALETTE[(S.statuses.length * 5) % PALETTE.length]); if (!f) return;
+          const { name, c } = f;
           const row = await DB.addStatus({ id: uid().slice(0, 8), name: name.trim(), c, ord: S.statuses.filter((s) => !s.done).length + 1, done: false });
           S.statuses.push(row); S.statuses.sort((a, b) => a.ord - b.ord); m._onClose = null; m.remove(); res(row.id);
         };

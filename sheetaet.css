@@ -703,3 +703,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 @media (max-width:767px){ .yt-block .yt{ width:1166px; } }
 @media (min-width:860px){ .yt-block .yt{ width:max(100%, 1380px); } }
 @media (min-width:860px){ .yt-block .yt{ width:max(100%, 1272px); } }
+
+/* v21: текущий месяц больше не подсвечивается колонкой — заливки нет ни в одной таблице */
+:root, [data-theme="light"], [data-theme="dark"]{ --cur-t: transparent; }

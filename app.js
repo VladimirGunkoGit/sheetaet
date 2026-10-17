@@ -301,7 +301,14 @@
   let wasMobile = isMobile();
   window.addEventListener("resize", () => { if (isMobile() !== wasMobile) { wasMobile = isMobile(); render(); } });
   // «назад» из карточки: туда, откуда пришли (главная, проект, сотрудник, архив…); если карточку открыли по ссылке — в список
-  function goBack(fallback) { if (history.state && history.state.app) history.back(); else go(fallback != null ? fallback : S.page, null, { replace: true }); }
+  function goBack() {
+    // назад — туда, откуда пришли, но не в списки проектов и сотрудников: их больше нет в меню, путь — через главную
+    const toHome = () => { S.dashTab = "table"; try { localStorage.setItem("sheetaet_dash", "table"); } catch (e) {} go("", null, { replace: true }); };
+    if (!(history.state && history.state.app)) return toHome();
+    const here = location.href;
+    history.back();
+    setTimeout(() => { if (location.href === here) return; const r = parsePath(); if ((r.page === "projects" || r.page === "team") && !r.id) toHome(); }, 60);
+  }
 
   /* ================= ВХОД ================= */
   function authMsg(t, err) { const el = $("#auth-msg"); el.textContent = t || ""; el.classList.toggle("is-error", !!err); }
@@ -440,7 +447,7 @@
   }
   $$("#page-nav .nav-item").forEach((b) => b.addEventListener("click", () => go(b.dataset.go)));
   $("#brand-home").addEventListener("click", () => go(""));
-  $("#back-btn").addEventListener("click", () => goBack(S.id ? S.page : ""));
+  $("#back-btn").addEventListener("click", () => goBack(""));
   $("#org-btn").addEventListener("click", () => go("org"));
   /* ================= УВЕДОМЛЕНИЯ: пуш на устройство и Телеграм =================
      Сервер (функция sheetaet-notify, каждый день в 9:00 МСК) сам решает, что и кому отправить.
@@ -1228,7 +1235,7 @@
     S.drafts.push(d); return d;
   }
   function renderProject(main) {
-    const p = projById(S.id); if (!p) { go("projects", null, { replace: true }); return; }
+    const p = projById(S.id); if (!p) { go("", null, { replace: true }); return; }
     main.innerHTML = `<div class="taskcard scroll sh-card" id="pcard">
       <div class="proj-head sh-head"><div class="taskcard-title sh-big-title" contenteditable="true" data-placeholder="Новый проект" id="p-name">${esc(p.name || "")}</div></div>
       <div class="sh-fullname" contenteditable="true" data-placeholder="Полное название организации" id="p-full">${esc(p.full_name || "")}</div>
@@ -1263,13 +1270,13 @@
       const patch = v === "open" ? { end_date: null, open_ended: true } : isEnd ? { end_date: v, open_ended: false } : { [f]: v };
       Object.assign(p, patch); await safe(() => DB.update("projects", p.id, patch)); renderProject(main);
     }));
-    $("[data-done]", main).onclick = async () => { if (!p.name) { p.name = "Без названия"; await DB.update("projects", p.id, { name: p.name }); } goBack("projects"); };
+    $("[data-done]", main).onclick = async () => { if (!p.name) { p.name = "Без названия"; await DB.update("projects", p.id, { name: p.name }); } goBack(); };
     $("[data-arch]", main).onclick = async () => {
       const to = !p.archived;
       if (to && !(await confirmBox("Убрать проект в архив?", "он пропадёт из списков, но все суммы сохранятся. вернуть можно в карточке организации (кнопка «портфель»)", "В архив"))) return;
       p.archived = to; await safe(() => DB.update("projects", p.id, { archived: to }));
       pushUndo(to ? "архив" : "возврат из архива", () => DB.update("projects", p.id, { archived: (p.archived = !to) }));
-      toast(to ? "проект в архиве" : "проект возвращён"); go(to ? "projects" : "projects", to ? null : p.id);
+      toast(to ? "проект в архиве" : "проект возвращён"); if (to) goBack(); else render();
     };
   }
   function projectYearRows(p) {
@@ -1469,7 +1476,7 @@
     });
   }
   function renderEmployee(main) {
-    const e = empById(S.id); if (!e) { go("team", null, { replace: true }); return; }
+    const e = empById(S.id); if (!e) { go("", null, { replace: true }); return; }
     const yearMode = viewOf("employee") === "year";
     const em = EMPLOYMENT[e.employment] || null;
     main.innerHTML = `<div class="taskcard scroll sh-card">
@@ -1492,8 +1499,8 @@
     $("[data-day]", main).onclick = async () => { const d = await pickDay(e.pay_day); if (!d) return; e.pay_day = d; await safe(() => DB.update("employees", e.id, { pay_day: d })); renderEmployee(main); };
     $("[data-notify]", main).onclick = async () => { const on = e.notify === false; e.notify = on; await safe(() => DB.update("employees", e.id, { notify: on })); toast(on ? "напоминания о выплатах включены" : "напоминания о выплатах выключены"); renderEmployee(main); };
     $("[data-emp]", main).onclick = async () => { const k = await pickEmployment(e.employment); if (!k) return; e.employment = k; await safe(() => DB.update("employees", e.id, { employment: k })); renderEmployee(main); };
-    $("[data-done]", main).onclick = async () => { if (!C.fullName(e)) { if (!S.entries.some((x) => x.employee_id === e.id)) { await DB.remove("employees", e.id); S.employees = S.employees.filter((x) => x.id !== e.id); } } goBack("team"); };
-    $("[data-arch]", main).onclick = () => archiveEmployee(e, () => go("team"));
+    $("[data-done]", main).onclick = async () => { if (!C.fullName(e)) { if (!S.entries.some((x) => x.employee_id === e.id)) { await DB.remove("employees", e.id); S.employees = S.employees.filter((x) => x.id !== e.id); } } goBack(); };
+    $("[data-arch]", main).onclick = () => archiveEmployee(e, () => goBack());
   }
   // карточка сотрудника: проекты = строки выплат (все проекты человека, даже без суммы в этом месяце)
   function renderEmployeeBody(e, yearMode) {

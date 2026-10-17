@@ -793,3 +793,11 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 /* личный кабинет: кнопка уведомлений — колокольчик + действие */
 #push-btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px; }
 #push-btn svg{ flex:none; width:16px; height:16px; }
+
+/* v34: во всплывающих окнах выбранный пункт — обычное начертание и серая подложка (как в меню статуса) */
+.remind-opt, .remind-opt.is-on, .remind-auto, .remind-auto.is-on{ font-weight:400; }
+.remind-opt.is-on, .remind-auto.is-on{ background:var(--inactive-bg); color:var(--fg); }
+.remind-auto{ background:transparent; }
+.remind-card .cal-day.sel{ background:var(--inactive-bg); color:var(--fg); font-weight:400; }
+.proj-list .proj-pill.is-on, .proj-list .proj-pill.is-cur{ background:var(--sel-bg); color:var(--fg); font-weight:400; }
+.status-list .status-pill.is-cur{ font-weight:400; box-shadow:inset 0 0 0 1px var(--rule-sec); }

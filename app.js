@@ -1173,7 +1173,7 @@
     $$("[data-ropen]", root).forEach((b) => (b.onclick = () => go("projects", b.dataset.ropen)));
     $$("[data-rdone]", root).forEach((b) => (b.onclick = async () => { await markRemindDone(projById(b.dataset.rdone), b.dataset.mk); toast("отмечено — следующее напоминание через месяц"); rerender(); }));
   }
-  // окно напоминания: что выставить (нет / акт / счёт / акт + счёт) и когда (за 10 дней до поступления или свой день)
+  // окно напоминания: что выставить (нет / акт / счёт / акт + счёт) и когда (за 10 дней до даты платежа или свой день)
   function remindBox(p, onChange) {
     return new Promise((res) => {
       const m = modal(`<div class="modal-title">напоминание</div><div class="remind-opts"></div><div class="remind-when-box"></div><div class="cal-actions"><button class="btn" data-ok>Готово</button></div>`, "cal-card remind-card");
@@ -1183,7 +1183,7 @@
         $(".remind-opts", m).innerHTML = [["", "нет", R_ICON.bellOff], ...Object.entries(REMIND).map(([k, v]) => [k, v, R_ICON[k]])]
           .map(([k, v, ic]) => `<button class="remind-opt ${(p.remind_kind || "") === k ? "is-on" : ""}" data-k="${k}">${ic}<span>${v}</span></button>`).join("");
         $(".remind-when-box", m).innerHTML = p.remind_kind ? `<div class="money-note">когда — ближайшее ${C.dayLong(nextRemind(p).at)}</div>
-          <button class="remind-auto ${p.remind_day ? "" : "is-on"}" data-auto>за 10 дней до поступления</button>
+          <button class="remind-auto ${p.remind_day ? "" : "is-on"}" data-auto>за 10 дней до даты платежа</button>
           <div class="day-grid">${Array.from({ length: 31 }, (_, i) => `<button class="cal-day ${i + 1 === p.remind_day ? "sel" : ""}" data-d="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
         $$("[data-k]", m).forEach((b) => (b.onclick = async () => {
           const v = b.dataset.k || null; await save({ remind_kind: v });

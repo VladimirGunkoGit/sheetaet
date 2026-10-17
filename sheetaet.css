@@ -706,3 +706,19 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 
 /* v21: текущий месяц больше не подсвечивается колонкой — заливки нет ни в одной таблице */
 :root, [data-theme="light"], [data-theme="dark"]{ --cur-t: transparent; }
+
+/* ================= v23: план и факт ================= */
+/* будущие месяцы — план: серым во всех таблицах (и итоги, и полужирные строки) */
+.yt td.is-plan, .yt tr td.is-plan, .yt tr.is-sum td.is-plan, .yt tr.yt-total td.is-plan, .yt tr.yt-profit td.is-plan{ color:var(--muted); }
+.yt td.is-plan.is-neg{ color:rgba(232,120,120,.55); }
+.yt th.is-plan{ opacity:.6; }
+.is-plan-month .dt-v, .is-plan-month .dt-row.is-sum .dt-v, .is-plan-month .dt-total .dt-v, .is-plan-month .ent-amt, .is-plan-month .ent-sum,
+.is-plan-month .emp-pay-sum, .is-plan-month .kpi-num, .is-plan-month .ent-profit-num, .is-plan-month .ent-total{ color:var(--muted); }
+.plan-tag{ display:inline-block; margin-left:8px; padding:2px 7px; border-radius:5px; background:var(--inactive-bg); color:var(--muted); font-family:var(--font-body); font-size:11px; font-weight:400; letter-spacing:.03em; vertical-align:middle; }
+.plan-note{ margin:0 0 12px; font-size:12px; color:var(--muted); text-align:center; }
+.kpi-forecast{ font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; }
+/* переименование строки прямо в ячейке */
+.yt-input--name{ text-align:left; font-weight:inherit; }
+/* окно напоминания: «Готово» — как «Отмена» в календаре */
+.remind-card .cal-actions{ display:flex; }
+.remind-card .cal-actions .btn{ flex:1; }

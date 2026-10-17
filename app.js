@@ -358,8 +358,57 @@
     Object.assign(S, d); S.statuses.sort((a, b) => a.ord - b.ord);
     $("#auth").hidden = true; $("#app").hidden = false;
     route();
+    startRealtime();
     notifyDue(); setInterval(notifyDue, 60 * 60 * 1000);
   }
+
+  /* ================= РЕАЛЬНОЕ ВРЕМЯ =================
+     Изменения других участников приходят сразу (Supabase Realtime, с учётом RLS) и применяются к данным в памяти.
+     Перерисовка — не во время ввода и не при открытом окне: ждём, пока пользователь закончит. Прокрутка сохраняется.
+     После долгого перерыва (вкладка была скрыта > 1 мин) данные перечитываются целиком. */
+  const RT_ARR = { entries: "entries", projects: "projects", employees: "employees", project_members: "members", statuses: "statuses" };
+  let rtTimer = null;
+  function rtApply(table, ev) {
+    const n = ev.new && Object.keys(ev.new).length ? ev.new : null, o = ev.old || {}, del = ev.eventType === "DELETE";
+    if (table === "orgs") { if (n && S.org && n.id === S.org.id) Object.assign(S.org, n); }
+    else if (table === "project_members") {
+      if (del) S.members = S.members.filter((m) => !(m.project_id === o.project_id && m.employee_id === o.employee_id));
+      else if (n && n.org_id === S.org.id && !S.members.some((m) => m.project_id === n.project_id && m.employee_id === n.employee_id)) S.members.push(n);
+    } else {
+      const key = RT_ARR[table]; if (!key) return;
+      if (del) { if (o.id == null || !S[key].some((x) => x.id === o.id)) return; S[key] = S[key].filter((x) => x.id !== o.id); }
+      else if (n && n.org_id === S.org.id) { const ex = S[key].find((x) => x.id === n.id); if (ex) Object.assign(ex, n); else S[key].push(n); if (key === "statuses") S.statuses.sort((a, b) => a.ord - b.ord); }
+      else return;
+    }
+    scheduleRender();
+  }
+  function busy() { const a = document.activeElement; return !!$("#modals .modal") || !!(a && (a.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(a.tagName))); }
+  function scheduleRender() {
+    clearTimeout(rtTimer);
+    rtTimer = setTimeout(() => {
+      if (busy()) { scheduleRender(); return; }
+      const sc = $("#main .scroll, #main .sh-pane"), top = sc ? sc.scrollTop : 0, w = $("#main .yt-wrap"), left = w ? w.scrollLeft : 0;
+      render();
+      const sc2 = $("#main .scroll, #main .sh-pane"); if (sc2) sc2.scrollTop = top;
+      const w2 = $("#main .yt-wrap"), h2 = $("#main .yt-head"); if (w2) { w2.scrollLeft = left; if (h2) h2.scrollLeft = left; }
+    }, 500);
+  }
+  function startRealtime() {
+    if (DEMO || !sb || !S.org) return;
+    const ch = sb.channel("org-" + S.org.id);
+    Object.keys(RT_ARR).forEach((t) => {
+      ch.on("postgres_changes", { event: "*", schema: "public", table: t, filter: `org_id=eq.${S.org.id}` }, (ev) => rtApply(t, ev));
+      ch.on("postgres_changes", { event: "DELETE", schema: "public", table: t }, (ev) => rtApply(t, ev));   // удаления по org не фильтруются
+    });
+    ch.on("postgres_changes", { event: "UPDATE", schema: "public", table: "orgs", filter: `id=eq.${S.org.id}` }, (ev) => rtApply("orgs", ev));
+    ch.subscribe();
+    let hiddenAt = 0;
+    document.addEventListener("visibilitychange", async () => {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      if (hiddenAt && Date.now() - hiddenAt > 60000) { try { const d = await DB.load(S.slug); if (d) { Object.assign(S, d); S.statuses.sort((a, b) => a.ord - b.ord); scheduleRender(); } } catch (e) {} }
+    });
+  }
+  if (DEMO) window.__sheetaetRT = rtApply;   // только в демо: проверка применения событий
 
   /* ================= КАРКАС ================= */
   const TITLES = { "": "главная", projects: "проекты", team: "сотрудники", org: "организация" };
@@ -440,7 +489,7 @@
     // стрелки — вплотную по бокам от названия; «сегодня» — справа от правой стрелки, название остаётся строго по центру
     return `<div class="cal-nav-row money-monthbar" data-step="${step}"><div class="mbar-center mbar-group">
       <button class="cal-nav" data-mon="-${step}" aria-label="${isYear ? "Предыдущий год" : "Предыдущий месяц"}">‹</button>
-      <span class="money-month-title">${isYear ? yearOf() : C.monthLabel(S.month)}</span>
+      <span class="money-month-title">${isYear ? yearOf() : C.monthLabel(S.month)}${(isYear ? yearOf() > curKey.slice(0, 4) : S.month > curKey) ? `<span class="plan-tag">план</span>` : ""}</span>
       <button class="cal-nav" data-mon="${step}" aria-label="${isYear ? "Следующий год" : "Следующий месяц"}">›</button>
       <button class="mbar-today ${isCur ? "is-dim" : ""}" data-mon="0" title="перейти к сегодняшнему дню">${C.dayLabel(today)}</button></div></div>`;
   }
@@ -485,7 +534,7 @@
   // rows: {label, values[12], total, cls, open, page, pct} | {sec: kindKey, label}
   function yearGrid(rows) {
     const keys = C.monthsOfYear(yearOf()), curKey = C.monthKey(C.todayStr());
-    const cur = (i) => (keys[i] === curKey ? " is-cur" : "");
+    const cur = (i) => (keys[i] === curKey ? " is-cur" : keys[i] > curKey ? " is-plan" : "");
     // только 12 месяцев — сумма за год не показывается
     const cols = `<colgroup><col class="yt-c-l" />${keys.map(() => `<col class="yt-c-m" />`).join("")}</colgroup>`;
     // строка месяцев — отдельной тонкой таблицей: закреплена сверху при прокрутке страницы и едет вбок вместе с таблицей
@@ -516,7 +565,17 @@
       if (!spec.title) return;
       td.classList.add("is-rename"); td.title = "нажмите, чтобы переименовать";
       const ids = spec.slot != null ? $$("td[data-eid]", td.parentElement).map((x) => x.dataset.eid) : null;
-      td.onclick = (e) => { e.stopPropagation(); renameLine(spec, redraw, ids); };
+      td.onclick = (e) => {
+        e.stopPropagation(); if (td.querySelector("input")) return;
+        // переименование прямо в строке: курсор в поле, Enter или клик мимо — сохранить, Esc — отмена
+        td.classList.add("is-editing");
+        td.innerHTML = `<input class="yt-input yt-input--name" value="${esc(spec.title)}" maxlength="120" />`;
+        const inp = $("input", td); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+        let done = false;
+        const fin = (save) => { if (done) return; done = true; if (save && inp.value.trim() && inp.value.trim() !== spec.title) renameLine(spec, redraw, ids, inp.value.trim()); else redraw(); };
+        inp.onkeydown = (ev) => { if (ev.key === "Enter") { ev.preventDefault(); fin(true); } else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); fin(false); } };
+        inp.onblur = () => fin(true); inp.onclick = (ev) => ev.stopPropagation();
+      };
     });
     $$("[data-secadd]", root).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); yearAdd(JSON.parse(b.dataset.secadd), root, redraw); }));
     $$(".yt-block", root).forEach((b) => {
@@ -553,9 +612,8 @@
     const td = tr && $(`td[data-mk="${mk}"]`, tr); if (td) { td.scrollIntoView({ block: "nearest", inline: "center" }); td.click(); }
   }
   // переименовать строку (поступление, расход, постоянный расход): меняется название у всех её сумм
-  async function renameLine(spec, redraw, ids) {
-    const v = await inputBox({ title: "название строки", value: spec.title, okLabel: "Сохранить" }); if (v == null) return;
-    const title = v.trim(); if (!title || title === spec.title) return;
+  async function renameLine(spec, redraw, ids, newTitle) {
+    const title = (newTitle || "").trim(); if (!title || title === spec.title) return redraw();
     const same = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && (spec.kind === "income" ? incTitle(e) : (e.title || "расход").trim()) === spec.title;
     const list = ids ? S.entries.filter((e) => ids.includes(e.id)) : S.entries.filter(same);
     for (const e of list) { e.title = title; await safe(() => DB.update("entries", e.id, { title })); }
@@ -722,7 +780,8 @@
           cell.font = { name: FONT, size: 11, bold };
           cell.border = { bottom: { style: "thin", color: { argb: LINE } } };
           cell.alignment = { horizontal: c === 1 ? "left" : "right", vertical: "middle" };
-          if (c > 1) { cell.numFmt = r.pct ? '0.0%;-0.0%;""' : fmt; if (typeof cell.value === "number" && cell.value < 0) cell.font = { name: FONT, size: 11, bold, color: { argb: NEG } }; }
+          const plan = year && c > 1 && C.monthsOfYear(yearOf())[c - 2] > C.monthKey(C.todayStr());
+          if (c > 1) { cell.numFmt = r.pct ? '0.0%;-0.0%;""' : fmt; if (typeof cell.value === "number" && cell.value < 0) cell.font = { name: FONT, size: 11, bold, color: { argb: plan ? "FFE8A0A0" : NEG } }; else if (plan) cell.font = { name: FONT, size: 11, bold, color: { argb: MUTED } }; }
         }
         row.height = 18;
       });
@@ -736,8 +795,9 @@
   }
 
   // итоги организации за год — та же форма, что у месяца (orgMonth), для «Сводки» по году
-  function orgYearTotal(year) {
-    const ms = C.orgYear(S.projects, S.entries, year, S.org);
+  function orgYearTotal(year, upto) {
+    const keys0 = C.monthsOfYear(year);
+    const ms = C.orgYear(S.projects, S.entries, year, S.org).filter((_, i) => !upto || keys0[i] <= upto);
     const keys = ["income", "salaries", "tax", "projOther", "fixed", "other", "expense", "profit", "projectsProfit"];
     const out = {}; keys.forEach((k) => (out[k] = ms.reduce((s, m) => s + m[k], 0)));
     out.per = S.projects.map((p) => { const x = { project: p, income: 0, profit: 0, other: 0, salaries: 0, tax: 0, total: 0 }; ms.forEach((m) => { const y = m.per.find((z) => z.project.id === p.id); if (y) ["income", "profit", "other", "salaries", "tax", "total"].forEach((k) => (x[k] += y[k])); }); return x; });
@@ -752,26 +812,34 @@
     // «год / месяц» — один переключатель для «Сводки» и «Таблицы»
     const yearMode = viewOf("dash") === "year";
     const prevKey = C.addMonths(S.month, -1);
-    const cur = yearMode ? orgYearTotal(yearOf()) : C.orgMonth(S.projects, S.entries, S.month, S.org);
-    const prev = yearMode ? orgYearTotal(String(+yearOf() - 1)) : C.orgMonth(S.projects, S.entries, prevKey, S.org);
+    // факт и план: будущие месяцы — план. В текущем году сводка показывает факт (по текущий месяц) и прогноз на весь год,
+    // сравнение — с тем же периодом прошлого года
+    const todayKey = C.monthKey(C.todayStr()), y = yearOf(), py = String(+y - 1);
+    const midYear = yearMode && y === todayKey.slice(0, 4);
+    const cur = yearMode ? orgYearTotal(y, midYear ? todayKey : null) : C.orgMonth(S.projects, S.entries, S.month, S.org);
+    const forecast = midYear ? orgYearTotal(y) : null;
+    const prev = yearMode ? orgYearTotal(py, midYear ? py + todayKey.slice(4) : null) : C.orgMonth(S.projects, S.entries, prevKey, S.org);
+    const isPlan = yearMode ? y > todayKey.slice(0, 4) : S.month > todayKey;
     main.innerHTML = `<div class="pane pane--money scroll sh-pane">${periodHead("dash", yearMode ? "year" : "month")}<div id="dash-body"></div></div>`;
     wireMonthBar(main); wireViewToggle(main, () => renderDashboard(main));
     const body = $("#dash-body", main);
     const rb = remindBanner(); if (rb) { body.insertAdjacentHTML("beforebegin", rb); wireRemindBanner(main, () => renderDashboard(main)); }
     if (S.dashTab === "table" && yearMode) { body.innerHTML = yearGrid(dashYearRows()); wireYearGrid(body, "dash"); return; }
     if (S.dashTab === "table") { body.innerHTML = dashTable(cur); $$("[data-open]", body).forEach((r) => (r.onclick = () => go(r.dataset.page, r.dataset.open))); wireFold(body); return; }
-    const prevName = yearMode ? String(+yearOf() - 1) + " году" : C.monthPrep(prevKey);
+    const prevName = yearMode ? py + (midYear ? " (янв–" + C.MONTHS_SHORT[+todayKey.slice(5) - 1] + ")" : " году") : C.monthPrep(prevKey);
     const tiles = [
-      ["прибыль всего", cur.profit, prev.profit, "up-good", "profit"], ["доход всего", cur.income, prev.income, "up-good", "income"],
-      ["расход всего", cur.expense, prev.expense, "up-bad", "expense"], ["зарплаты", cur.salaries, prev.salaries, "up-bad", "salary"],
-      ["налоги", cur.tax, prev.tax, "up-bad", "tax"], ["прочие расходы", cur.other, prev.other, "up-bad", "expense"],
+      ["прибыль всего", cur.profit, prev.profit, "up-good", "profit", "profit"], ["доход всего", cur.income, prev.income, "up-good", "income", "income"],
+      ["расход всего", cur.expense, prev.expense, "up-bad", "expense", "expense"], ["зарплаты", cur.salaries, prev.salaries, "up-bad", "salary", "salaries"],
+      ["налоги", cur.tax, prev.tax, "up-bad", "tax", "tax"], ["прочие расходы", cur.other, prev.other, "up-bad", "expense", "other"],
     ];
     const per = periodOf(yearMode ? "year" : "month"), shown = new Set(listProjects(per).map((p) => p.id));
     const empty = !cur.income && !cur.expense;
     body.innerHTML = `${empty ? `<p class="empty">${yearMode ? "в " + yearOf() + " году" : "в " + C.monthPrep(S.month)} пока нет записей</p>` : ""}
-      <div class="kpi-grid">${tiles.map(([label, v, pv, kind, k]) => { const cmp = C.compare(v, pv, kind); const tri = cmp.dir === "up" ? "▲" : cmp.dir === "down" ? "▼" : "▶"; return `<button class="kpi" data-tab-go="table">
+      ${midYear ? `<p class="plan-note">факт — январь–${C.MONTHS[+todayKey.slice(5) - 1]}; прогноз — с учётом проставленных сумм до конца года</p>` : isPlan ? `<p class="plan-note">это план: ${yearMode ? y + " год ещё" : C.monthLabel(S.month) + " ещё"} не наступил</p>` : ""}
+      <div class="kpi-grid${isPlan ? " is-plan-month" : ""}">${tiles.map(([label, v, pv, kind, k, fk]) => { const cmp = C.compare(v, pv, kind); const tri = cmp.dir === "up" ? "▲" : cmp.dir === "down" ? "▼" : "▶"; return `<button class="kpi" data-tab-go="table">
         <span class="kpi-num ${v < 0 ? "is-neg" : ""}">${fm(v)}</span>
-        <span class="kpi-label"><span class="k-dot" style="--c:${K[k]}"></span>${label}</span>
+        <span class="kpi-label"><span class="k-dot" style="--c:${K[k]}"></span>${label}${midYear ? " · факт" : isPlan ? " · план" : ""}</span>
+        ${forecast ? `<span class="kpi-forecast">прогноз на год ${fmt(forecast[fk])}</span>` : ""}
         <span class="kpi-prev"><span><span class="kpi-tri kpi-tri--${cmp.tone}">${tri}</span>${cmp.isNew ? "новое" : cmp.change != null ? (cmp.change > 0 ? "+" : "") + cmp.change + "%" : ""}</span><span>в ${prevName} ${fmt(pv)}</span></span></button>`; }).join("")}</div>
       <div class="ch-block"><div class="ch-title">чистая прибыль по проектам</div>${CH.bars(cur.per.filter((x) => shown.has(x.project.id) && (x.project.status !== "done" || x.income || x.total)).sort((a, b) => b.profit - a.profit).map((x) => ({ label: x.project.name, emoji: x.project.emoji, value: x.profit, c: K.profit })))}</div>
       <div class="ch-stack">
@@ -791,7 +859,7 @@
     const people = listPeople(per);
     const fx = S.entries.filter((e) => e.kind === "org_expense" && C.inMonth(e.date, S.month));
     const open = (p) => ({ open: p.id, page: "projects" });
-    let h = `<div class="dash-table">`;
+    let h = `<div class="dash-table${S.month > C.monthKey(C.todayStr()) ? " is-plan-month" : ""}">`;
     h += sec("income", "поступления") + projs.map((p) => row(pl(p), (byId[p.id] || {}).income || 0, open(p))).join("") + row("выручка до налогов", o.income, { cls: "is-sum" });
     h += sec("tax", "налоги") + row(`налоги · ${taxPct()} от выручки`, o.tax, { cls: "is-sum" });
     h += sec("salary", "зарплаты") + people.map((e) => row(esc(C.fullName(e) || "без имени"), C.employeeMonth(e.id, S.entries, S.month).total, { open: e.id, page: "team" })).join("") + row("зарплаты всего", o.salaries, { cls: "is-sum" });
@@ -913,7 +981,7 @@
   // окно напоминания: что выставить (нет / акт / счёт / акт + счёт) и когда (за 10 дней до поступления или свой день)
   function remindBox(p, onChange) {
     return new Promise((res) => {
-      const m = modal(`<div class="modal-title">напоминание</div><div class="remind-opts"></div><div class="remind-when-box"></div><button class="modal-clear" data-ok>готово</button>`, "cal-card remind-card");
+      const m = modal(`<div class="modal-title">напоминание</div><div class="remind-opts"></div><div class="remind-when-box"></div><div class="cal-actions"><button class="btn" data-ok>Готово</button></div>`, "cal-card remind-card");
       m._onClose = () => res();
       const save = async (patch) => { Object.assign(p, patch); await safe(() => DB.update("projects", p.id, patch)); onChange(); draw(); };
       const draw = () => {
@@ -921,8 +989,7 @@
           .map(([k, v, ic]) => `<button class="remind-opt ${(p.remind_kind || "") === k ? "is-on" : ""}" data-k="${k}">${ic}<span>${v}</span></button>`).join("");
         $(".remind-when-box", m).innerHTML = p.remind_kind ? `<div class="money-note">когда — ближайшее ${C.dayLong(nextRemind(p).at)}</div>
           <button class="remind-auto ${p.remind_day ? "" : "is-on"}" data-auto>за 10 дней до поступления</button>
-          <div class="day-grid">${Array.from({ length: 31 }, (_, i) => `<button class="cal-day ${i + 1 === p.remind_day ? "sel" : ""}" data-d="${i + 1}">${i + 1}</button>`).join("")}</div>
-          <div class="money-note">или свой день каждого месяца. поступление ~${p.income_day || 10}-го; если день позже — напомню в прошлом месяце</div>` : "";
+          <div class="day-grid">${Array.from({ length: 31 }, (_, i) => `<button class="cal-day ${i + 1 === p.remind_day ? "sel" : ""}" data-d="${i + 1}">${i + 1}</button>`).join("")}</div>` : "";
         $$("[data-k]", m).forEach((b) => (b.onclick = async () => {
           const v = b.dataset.k || null; await save({ remind_kind: v });
           if (v && "Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
@@ -985,7 +1052,7 @@
         ${p.archived ? `<span class="meta-pill is-empty">в архиве</span>` : ""}
         <button class="meta-pill meta-color" data-color title="цвет проекта"><span class="status-dot" style="--c:${p.color || PALETTE[0]}"></span></button></div>
       ${periodHead("project", viewOf("project"))}
-      <div id="p-tables"></div>
+      <div id="p-tables" class="${S.month > C.monthKey(C.todayStr()) && viewOf("project") === "month" ? "is-plan-month" : ""}"></div>
       <div id="p-note" class="taskcard-desc" contenteditable="true" data-placeholder="заметки по проекту…"></div>
     </div>
     <div class="form-foot"><div class="form-actions"><button class="btn btn--solid" data-done>Готово</button><button class="btn" data-arch>${p.archived ? "Вернуть" : "В архив"}</button></div></div>`;
@@ -1225,7 +1292,7 @@
         <button class="status-slot" data-emp>${em ? `<span class="status-pill" style="--c:${em.c}"><span>${em.name}</span><span class="status-dot" style="--c:${em.c}"></span></span>` : `<span class="meta-pill is-empty">тип занятости</span>`}</button>
         ${e.active === false ? `<span class="meta-pill is-empty">в архиве</span>` : ""}</div>
       ${periodHead("employee", yearMode ? "year" : "month")}
-      <div id="e-body"></div>
+      <div id="e-body" class="${S.month > C.monthKey(C.todayStr()) && !yearMode ? "is-plan-month" : ""}"></div>
       <div id="e-note" class="taskcard-desc" contenteditable="true" data-placeholder="реквизиты, паспортные данные, как платить…"></div>
     </div>
     <div class="form-foot"><div class="form-actions"><button class="btn btn--solid" data-done>Готово</button><button class="btn" data-arch>${e.active === false ? "Вернуть" : "В архив"}</button></div></div>`;
@@ -1354,7 +1421,7 @@
         <button class="meta-pill" data-rate><span class="meta-cap">цель по прибыли</span>${String(o.profit_rate ?? 20).replace(".", ",")}%</button>
         <button class="meta-pill" data-arch><span class="meta-cap">архив</span>${archN || ""}</button></div>
       ${periodHead("org", yearMode ? "year" : "month")}
-      <div id="o-fixed"></div>
+      <div id="o-fixed" class="${S.month > C.monthKey(C.todayStr()) && !yearMode ? "is-plan-month" : ""}"></div>
       <div class="proj-tasks"><div class="proj-tasks-head">участники</div>
         ${(S.people || []).map((p) => `<div class="org-person"><span>${esc(p.email)}</span><span class="pay-role">${p.role === "owner" ? "владелец" : "участник"}</span></div>`).join("")}</div>
       ${isOwner && !DEMO ? `<div class="pane-head-tools org-actions"><button class="chip" data-pass>пароль организации</button></div>` : ""}

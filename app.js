@@ -498,7 +498,7 @@
       // раздел — широкая цветная полоса во всю строку (как в карточке проекта), по ячейке на месяц, чтобы текущий месяц не терялся
       if (r.sec) return `<tr class="yt-sec${fs.has(foldId(r.sec)) ? " is-folded" : ""}" style="--c:${K[r.sec]}"><td class="yt-l">${foldBtn(r.sec)}<span class="k-pill" style="--c:${K[r.sec]}">${esc(r.label)}</span>${r.add ? `<button class="sec-add" data-secadd="${esc(JSON.stringify(r.add))}" aria-label="Добавить строку" title="добавить">${PLUS_TINY}</button>` : ""}</td>${keys.map((_, i) => `<td class="${cur(i).trim()}"></td>`).join("")}<td class="yt-t"></td></tr>`;
       const ed = r.edit ? ` data-edit="${esc(JSON.stringify(r.edit))}"` : "";
-      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${cur(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}>${cell(r, v)}</td>`).join("")}<td class="yt-t${neg(r, r.total)}">${cell(r, r.total)}</td></tr>`;
+      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${cur(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}${r.cellIds && r.cellIds[i] ? ` data-eid="${r.cellIds[i]}"` : ""}>${cell(r, v)}</td>`).join("")}<td class="yt-t${neg(r, r.total)}">${cell(r, r.total)}</td></tr>`;
     }).join("");
     return `<div class="yt-block"><div class="yt-head"><table class="yt yt--head">${cols}${head}</table></div><div class="yt-wrap"><table class="yt">${cols}<tbody>${body}</tbody></table></div></div>`;
   }
@@ -514,7 +514,8 @@
       const spec = JSON.parse(td.parentElement.dataset.edit);
       if (!spec.title) return;
       td.classList.add("is-rename"); td.title = "нажмите, чтобы переименовать";
-      td.onclick = (e) => { e.stopPropagation(); renameLine(spec, redraw); };
+      const ids = spec.slot != null ? $$("td[data-eid]", td.parentElement).map((x) => x.dataset.eid) : null;
+      td.onclick = (e) => { e.stopPropagation(); renameLine(spec, redraw, ids); };
     });
     $$("[data-secadd]", root).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); yearAdd(JSON.parse(b.dataset.secadd), root, redraw); }));
     $$(".yt-block", root).forEach((b) => {
@@ -551,11 +552,11 @@
     const td = tr && $(`td[data-mk="${mk}"]`, tr); if (td) { td.scrollIntoView({ block: "nearest", inline: "center" }); td.click(); }
   }
   // переименовать строку (поступление, расход, постоянный расход): меняется название у всех её сумм
-  async function renameLine(spec, redraw) {
+  async function renameLine(spec, redraw, ids) {
     const v = await inputBox({ title: "название строки", value: spec.title, okLabel: "Сохранить" }); if (v == null) return;
     const title = v.trim(); if (!title || title === spec.title) return;
     const same = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && (spec.kind === "income" ? incTitle(e) : (e.title || "расход").trim()) === spec.title;
-    const list = S.entries.filter(same);
+    const list = ids ? S.entries.filter((e) => ids.includes(e.id)) : S.entries.filter(same);
     for (const e of list) { e.title = title; await safe(() => DB.update("entries", e.id, { title })); }
     const key = spec.kind === "income" ? "inc:" + spec.project_id : spec.kind === "expense" ? "exp:" + spec.project_id : "fix";
     S.extra[key] = extraTitles(key).map((t) => (t === spec.title ? title : t));
@@ -566,7 +567,8 @@
   function editYearCell(spec, key, after, td) {
     const match = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && C.inMonth(e.date, key)
       && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? incTitle(e) === spec.title : (e.title || "расход").trim() === spec.title);
-    const list = S.entries.filter(match);
+    // строка-слот (поступления в году): ячейка — ровно одна запись или пусто
+    const list = spec.slot != null ? (td && td.dataset.eid ? S.entries.filter((e) => e.id === td.dataset.eid) : []) : S.entries.filter(match);
     if (list.length > 1) { toast(`в ${C.monthPrep(key)} здесь ${list.length} записи — открываю месяц`); localStorage.setItem("sheetaet_view_" + (S.page === "team" ? "employee" : S.page === "org" ? "org" : "project"), "month"); setMonth(key); return; }
     if (!td || td.querySelector("input")) return;
     const cur = list[0], p = projById(spec.project_id), emp = spec.employee_id ? empById(spec.employee_id) : null;
@@ -1002,11 +1004,17 @@
     const rows = [];
     const ent = S.entries.filter((e) => e.project_id === p.id && e.date.startsWith(year));
     rows.push({ sec: "income", label: "доход", add: { kind: "income", pid: p.id } });
-    const inc = ent.filter((e) => e.kind === "income");
-    const incTitles = [...new Set([...inc.map(incTitle), ...extraTitles("inc:" + p.id)])];
-    if (!incTitles.length) incTitles.push(INCOME_DEFAULT);
-    incTitles.forEach((t) => rows.push(yRow(esc(t), ms.map((k) => sumBy(inc.filter((e) => incTitle(e) === t && C.inMonth(e.date, k)))), { edit: { kind: "income", project_id: p.id, title: t } })));
-    if (incTitles.length > 1) rows.push(yRow("итого доход", ym.map((m) => m.income), { cls: "is-sum" }));
+    // поступления не складываются: у каждого названия своя строка, а если в месяце несколько поступлений
+    // с одним названием — для них отдельные строки (как в месяце). Под ними — итог
+    const inc = ent.filter((e) => e.kind === "income").sort((a, b) => a.date.localeCompare(b.date) || String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    const titles = [...new Set([...inc.map(incTitle), ...extraTitles("inc:" + p.id)])];
+    if (!titles.length) titles.push(INCOME_DEFAULT);
+    titles.forEach((t) => {
+      const byMonth = ms.map((k) => inc.filter((e) => incTitle(e) === t && C.inMonth(e.date, k)));
+      const n = Math.max(1, ...byMonth.map((l) => l.length));
+      for (let i = 0; i < n; i++) rows.push(yRow(esc(t), byMonth.map((l) => (l[i] ? l[i].amount_minor : 0)), { edit: { kind: "income", project_id: p.id, title: t, slot: i }, cellIds: byMonth.map((l) => (l[i] ? l[i].id : "")) }));
+    });
+    rows.push(yRow("итого доход", ym.map((m) => m.income), { cls: "is-sum" }));
     rows.push({ sec: "salary", label: "зарплаты", add: { kind: "salary", pid: p.id } });
     const sal = ent.filter((e) => e.kind === "salary");
     const people = new Set([...membersOf(p.id), ...sal.map((e) => e.employee_id).filter(Boolean)]);

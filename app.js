@@ -807,11 +807,16 @@
   // правка одной ячейки годовой таблицы (проект, сотрудник, организация): прямо в ячейке, без окна —
   // Enter или клик мимо сохраняет, Esc отменяет; пусто — сумма убирается
   function editYearCell(spec, key, after, td) {
-    const match = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && C.inMonth(e.date, key)
-      && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? incTitle(e) === spec.title : (e.title || "расход").trim() === spec.title);
+    // agg — сводная строка главной (проект или человек целиком): ячейка = все его записи этого вида за месяц
+    const match = spec.agg
+      ? (e) => e.kind === spec.kind && C.inMonth(e.date, key) && (spec.project_id == null || e.project_id === spec.project_id) && (spec.employee_id == null || e.employee_id === spec.employee_id)
+      : (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && C.inMonth(e.date, key)
+        && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? incTitle(e) === spec.title : (e.title || "расход").trim() === spec.title);
     // строка-слот (поступления в году): ячейка — ровно одна запись или пусто
     const list = spec.slot != null ? (td && td.dataset.eid ? S.entries.filter((e) => e.id === td.dataset.eid) : []) : S.entries.filter(match);
     // несколько записей в ячейке (месячного вида больше нет): правим сумму целиком — записи сливаются в одну
+    // в сводной ячейке несколько записей (например, выплаты по разным проектам) — не сливаем, правятся по отдельности в карточке
+    if (spec.agg && list.length > 1) { toast(`здесь ${list.length} ${C.plural(list.length, "запись", "записи", "записей")} — правьте их в карточке (нажмите на название)`); return; }
     const extra = list.length > 1 ? list.slice(1) : [];
     if (!td || td.querySelector("input")) return;
     const cur = list[0], p = projById(spec.project_id), emp = spec.employee_id ? empById(spec.employee_id) : null;
@@ -834,7 +839,7 @@
         pushUndo("изменение суммы", () => DB.update("entries", cur.id, { amount_minor: (cur.amount_minor = prev) }));
       } else if (a) {
         const day = spec.kind === "income" ? (p && p.income_day) || 10 : spec.kind === "salary" ? (emp && emp.pay_day) || 10 : spec.kind === "org_expense" ? 1 : 15;
-        const r = await safe(() => DB.insert("entries", { kind: spec.kind, project_id: spec.project_id, employee_id: spec.employee_id || null, title: spec.kind === "salary" ? null : spec.title, amount_minor: a, date: C.dayInMonth(key, day), status: newStatus(C.dayInMonth(key, day)) }));
+        const r = await safe(() => DB.insert("entries", { kind: spec.kind, project_id: spec.project_id, employee_id: spec.employee_id || null, title: spec.kind === "salary" ? null : spec.title || (spec.kind === "income" ? INCOME_DEFAULT : "расход"), amount_minor: a, date: C.dayInMonth(key, day), status: newStatus(C.dayInMonth(key, day)) }));
         S.entries.push(r);
         if (spec.kind === "salary" && spec.project_id && spec.employee_id) await DB.addMember(spec.project_id, spec.employee_id);
         pushUndo("добавление суммы", async () => { await DB.remove("entries", r.id); S.entries = S.entries.filter((x) => x !== r); });
@@ -1071,13 +1076,13 @@
     const fx = S.entries.filter((e) => e.kind === "org_expense" && e.date.startsWith(year));
     const rows = [];
     const inc = (e) => e.kind === "income", sal = (e) => e.kind === "salary", exp = (e) => e.kind === "expense", fxd = (e) => e.kind === "org_expense";
-    rows.push({ sec: "income", label: "поступления", add: { kind: "new-project" } }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "income"), { ...open(p), of: (e) => inc(e) && e.project_id === p.id })));
+    rows.push({ sec: "income", label: "поступления", add: { kind: "new-project" } }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "income"), { ...open(p), of: (e) => inc(e) && e.project_id === p.id, edit: { kind: "income", project_id: p.id, agg: true } })));
     rows.push(yRow("выручка до налогов", sumOrg("income"), { cls: "is-sum", of: inc }));
     rows.push({ sec: "tax", label: "налоги" }); rows.push(yRow(`налоги · ${taxPct()} от выручки`, sumOrg("tax"), { cls: "is-sum", of: inc }));
     rows.push({ sec: "salary", label: "зарплаты", add: { kind: "new-person" } });
-    listPeople(per).forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => C.employeeMonth(e.id, S.entries, k).total), { open: e.id, page: "team", of: (x) => sal(x) && x.employee_id === e.id })));
+    listPeople(per).forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => C.employeeMonth(e.id, S.entries, k).total), { open: e.id, page: "team", of: (x) => sal(x) && x.employee_id === e.id, edit: { kind: "salary", employee_id: e.id, agg: true } })));
     rows.push(yRow("зарплаты всего", sumOrg("salaries"), { cls: "is-sum", of: sal }));
-    rows.push({ sec: "expense", label: "прочие расходы проектов", add: { kind: "project-expense" } }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "other"), { ...open(p), of: (e) => exp(e) && e.project_id === p.id })));
+    rows.push({ sec: "expense", label: "прочие расходы проектов", add: { kind: "project-expense" } }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "other"), { ...open(p), of: (e) => exp(e) && e.project_id === p.id, edit: { kind: "expense", project_id: p.id, agg: true } })));
     rows.push(yRow("итого", sumOrg("projOther"), { cls: "is-sum", of: exp }));
     rows.push({ sec: "profit", label: "прибыль по проектам" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "profit"), { ...open(p), of: (e) => e.project_id === p.id })));
     rows.push(yRow("итого по проектам", sumOrg("projectsProfit"), { cls: "is-sum", of: (e) => !!e.project_id }));

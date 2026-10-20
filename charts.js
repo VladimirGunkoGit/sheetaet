@@ -38,7 +38,7 @@
       const p = (rad, ang) => `${(cx + rad * Math.cos(ang)).toFixed(2)} ${(cy + rad * Math.sin(ang)).toFixed(2)}`;
       paths += frac >= 0.9999
         ? `<circle cx="${cx}" cy="${cy}" r="${(R + r) / 2}" fill="none" stroke="rgb(${s.c})" stroke-width="${R - r}"/>`
-        : `<path d="M ${p(R, a0)} A ${R} ${R} 0 ${large} 1 ${p(R, a1)} L ${p(r, a1)} A ${r} ${r} 0 ${large} 0 ${p(r, a0)} Z" fill="rgb(${s.c})" stroke="var(--bg)" stroke-width="1.5"/>`;
+        : `<path d="M ${p(R, a0)} A ${R} ${R} 0 ${large} 1 ${p(R, a1)} L ${p(r, a1)} A ${r} ${r} 0 ${large} 0 ${p(r, a0)} Z" fill="rgb(${s.c})" stroke="var(--bg)" stroke-width="0.5"/>`;
       if (frac >= 0.06) { const mid = (a0 + a1) / 2, lr = (R + r) / 2; labels += `<text x="${(cx + lr * Math.cos(mid)).toFixed(1)}" y="${(cy + lr * Math.sin(mid)).toFixed(1)}" class="ch-seg-pct">${Math.round(frac * 100)}%</text>`; }
       a0 = a1;
     });

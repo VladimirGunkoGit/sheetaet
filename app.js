@@ -690,7 +690,8 @@
       const lists = cellLists(r, keys);
       const stc = (i) => { const st = r.st ? r.st[i] : lists ? cellSt(lists[i]) : null; return st ? ` st-${st}` : ""; };
       const ida = (i) => (lists && lists[i].length ? ` data-ids="${lists[i].map((e) => e.id).join(",")}"` : "");
-      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${curD(i)}${stc(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}${r.cellIds && r.cellIds[i] ? ` data-eid="${r.cellIds[i]}"` : ""}${ida(i)}>${cell(r, v)}</td>`).join("")}</tr>`;
+      const delBtn = r.edit && !r.edit.agg ? `<button class="row-del" data-row-del aria-label="Удалить строку" title="удалить строку">${TRASH}</button>` : "";
+      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}${delBtn}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${curD(i)}${stc(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}${r.cellIds && r.cellIds[i] ? ` data-eid="${r.cellIds[i]}"` : ""}${ida(i)}>${cell(r, v)}</td>`).join("")}</tr>`;
     }).join("");
     return `<div class="yt-block"><div class="yt-head"><table class="yt yt--head">${cols}${head}</table></div><div class="yt-wrap"><table class="yt">${cols}<tbody>${body}</tbody></table></div></div>`;
   }
@@ -721,6 +722,10 @@
         inp.onblur = () => fin(true); inp.onclick = (ev) => ev.stopPropagation();
       };
     });
+    $$("[data-row-del]", root).forEach((b) => (b.onclick = (e) => {
+      e.stopPropagation(); const tr = b.closest("tr");
+      deleteLine(JSON.parse(tr.dataset.edit), tr.querySelector(".yt-l").getAttribute("title") || "", redraw);
+    }));
     $$("[data-secadd]", root).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); yearAdd(JSON.parse(b.dataset.secadd), root, redraw); }));
     $$(".yt-block", root).forEach((b) => {
       const head = $(".yt-head", b), wrap = $(".yt-wrap", b);
@@ -757,8 +762,9 @@
       const eid = await pickEmployee(null, a.pid); if (!eid) return; await DB.addMember(a.pid, eid);
       spec = { kind: "salary", project_id: a.pid, employee_id: eid };
     } else if (a.kind === "salary" && a.eid) {
-      const pid = await pickProject(projectsOf(a.eid), "добавить в проект"); if (!pid) return; await DB.addMember(pid, a.eid);
-      spec = { kind: "salary", project_id: pid, employee_id: a.eid };
+      const pid = await pickProject(projectsOf(a.eid), "добавить в проект", true); if (!pid) return;
+      if (pid === "__none__") { S.extra["free:" + a.eid] = true; spec = { kind: "salary", project_id: null, employee_id: a.eid }; }
+      else { await DB.addMember(pid, a.eid); spec = { kind: "salary", project_id: pid, employee_id: a.eid }; }
     }
     if (!spec) return;
     redraw();
@@ -766,6 +772,25 @@
     const mk = S.month.slice(0, 4) === yearOf() ? S.month : yearOf() + "-01";
     const tr = $$("#main tr[data-edit]").find((r) => { /* после перерисовки ищем в новой таблице */ const x = JSON.parse(r.dataset.edit); return x.kind === spec.kind && (x.project_id || null) === (spec.project_id || null) && (x.employee_id || null) === (spec.employee_id || null) && (x.title || null) === (spec.title || null); });
     const td = tr && $(`td[data-mk="${mk}"]`, tr); if (td) { td.scrollIntoView({ block: "nearest", inline: "center" }); td.click(); }
+  }
+  // удалить строку целиком: все её суммы за выбранный год (с подтверждением; ⌘Z — вернуть).
+  // зарплата человека в проекте — он ещё и убирается из проекта; «без проекта» пропадает, пока снова не добавят через «+»
+  async function deleteLine(spec, label, redraw) {
+    const y = yearOf();
+    const same = (e) => e.kind === spec.kind && (e.project_id || null) === (spec.project_id || null) && e.date.startsWith(y)
+      && (spec.kind === "salary" ? e.employee_id === spec.employee_id : spec.kind === "income" ? incTitle(e) === spec.title : (e.title || "расход").trim() === spec.title);
+    const list = S.entries.filter(same), total = sumBy(list);
+    const ok = await confirmBox(`Удалить строку «${label}»?`, list.length ? `удалятся ${list.length} ${C.plural(list.length, "сумма", "суммы", "сумм")} за ${y} год на ${fmt(total)}` : "в строке нет сумм", "Удалить");
+    if (!ok) return;
+    for (const e of list) await safe(() => DB.remove("entries", e.id));
+    S.entries = S.entries.filter((e) => !list.includes(e));
+    const wasMember = spec.kind === "salary" && spec.project_id && spec.employee_id && S.members.some((m) => m.project_id === spec.project_id && m.employee_id === spec.employee_id);
+    if (wasMember) await DB.removeMember(spec.project_id, spec.employee_id);
+    if (spec.kind === "salary" && !spec.project_id) delete S.extra["free:" + spec.employee_id];
+    const key = spec.kind === "income" ? "inc:" + spec.project_id : spec.kind === "expense" ? "exp:" + spec.project_id : spec.kind === "org_expense" ? "fix" : null;
+    if (key) S.extra[key] = extraTitles(key).filter((t) => t !== spec.title);
+    pushUndo("удаление строки", async () => { if (wasMember) await DB.addMember(spec.project_id, spec.employee_id); for (const e of list) { const { id, created_at, updated_at, ...rest } = e; const r = await DB.insert("entries", rest); S.entries.push(r); } });
+    toast("строка удалена · ⌘Z — вернуть"); redraw();
   }
   // переименовать строку (поступление, расход, постоянный расход): меняется название у всех её сумм
   async function renameLine(spec, redraw, ids, newTitle) {
@@ -1456,7 +1481,7 @@
     });
   }
   // один проект (для «+ проект» в карточке сотрудника): кроме уже выбранных
-  function pickProject(exclude, title) {
+  function pickProject(exclude, title, allowNone) {
     return new Promise((res) => {
       const ex = new Set(exclude || []);
       const m = modal(`<div class="modal-title">${esc(title || "проект")}</div><div class="search-wrap"><input class="field field--search" placeholder=" " /><svg class="search-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></svg></div><div class="proj-list scroll"></div>`, "pick-modal");
@@ -1464,7 +1489,7 @@
       const draw = () => {
         const qv = $("input", m).value.trim().toLowerCase();
         const list = orderedProjects().filter((p) => !ex.has(p.id) && (!qv || (p.name || "").toLowerCase().includes(qv)));
-        $(".proj-list", m).innerHTML = `<button class="proj-add-row" data-new>${PLUS}</button>` + (list.length ? list.map((p) => `<button class="proj-pill" data-id="${p.id}"><span class="proj-name">${esc(p.name || "без названия")}</span></button>`).join("") : `<span class="empty">нет проектов</span>`);
+        $(".proj-list", m).innerHTML = `<button class="proj-add-row" data-new>${PLUS}</button>` + (allowNone && !qv ? `<button class="proj-pill" data-id="__none__"><span class="proj-name">без проекта</span></button>` : "") + (list.length ? list.map((p) => `<button class="proj-pill" data-id="${p.id}"><span class="proj-name">${esc(p.name || "без названия")}</span></button>`).join("") : `<span class="empty">нет проектов</span>`);
         $$("[data-id]", m).forEach((b) => (b.onclick = () => { m._onClose = null; m.remove(); res(b.dataset.id); }));
         $("[data-new]", m).onclick = async () => { const n = await inputBox({ title: "новый проект", placeholder: "название" }); if (!n || !n.trim()) return; const p = await createProject(n.trim()); m._onClose = null; m.remove(); res(p.id); };
       };
@@ -1526,6 +1551,7 @@
       const sal = S.entries.filter((x) => x.kind === "salary" && x.employee_id === e.id && x.date.startsWith(year));
       const pids = [...new Set([...projectsOf(e.id), ...sal.map((x) => x.project_id)])].map(projById).filter((p) => p && (!p.archived || sal.some((x) => x.project_id === p.id))).sort((a, b) => a.name.localeCompare(b.name, "ru"));
       const rows = [{ sec: "salary", label: "зарплаты", add: { kind: "salary", eid: e.id } }];
+      if (sal.some((x) => !x.project_id) || S.extra["free:" + e.id] || !pids.length)
       rows.push(yRow("без проекта", ms.map((k) => sumBy(sal.filter((x) => !x.project_id && C.inMonth(x.date, k)))), { edit: { kind: "salary", project_id: null, employee_id: e.id }, of: (x) => x.kind === "salary" && x.employee_id === e.id && !x.project_id }));
       pids.forEach((p) => rows.push(yRow(pl(p), ms.map((k) => sumBy(sal.filter((x) => x.project_id === p.id && C.inMonth(x.date, k)))), { open: p.id, page: "projects", edit: { kind: "salary", project_id: p.id, employee_id: e.id }, of: (x) => x.kind === "salary" && x.employee_id === e.id && x.project_id === p.id })));
       rows.push(yRow("итого", ms.map((k) => sumBy(sal.filter((x) => C.inMonth(x.date, k)))), { cls: "is-sum", of: (x) => x.kind === "salary" && x.employee_id === e.id }));

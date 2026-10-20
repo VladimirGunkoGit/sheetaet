@@ -1034,7 +1034,6 @@
     const per = periodOf(yearMode ? "year" : "month"), shown = new Set(listProjects(per).map((p) => p.id));
     const empty = !cur.income && !cur.expense;
     body.innerHTML = `${empty ? `<p class="empty">${yearMode ? "в " + yearOf() + " году" : "в " + C.monthPrep(S.month)} пока нет записей</p>` : ""}
-      ${forecast ? `<p class="plan-note">факт — суммы со статусом «готово»; с планом и опозданиями — ниже серым</p>` : ""}
       <div class="kpi-grid">${tiles.map(([label, v, pv, kind, k, fk]) => { const cmp = C.compare(v, pv, kind); const tri = cmp.dir === "up" ? "▲" : cmp.dir === "down" ? "▼" : "▶"; return `<button class="kpi" data-tab-go="table">
         <span class="kpi-num ${v < 0 ? "is-neg" : ""}">${fm(v)}</span>
         <span class="kpi-label"><span class="k-dot" style="--c:${K[k]}"></span>${label}${forecast ? " · факт" : ""}</span>

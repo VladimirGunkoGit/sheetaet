@@ -1003,7 +1003,8 @@
     const xb = $("#page-tools [data-xlsx]"); if (xb) xb.onclick = () => exportDashXlsx(xb);
     $$("#page-tools [data-tab]").forEach((b) => (b.onclick = () => { S.dashTab = b.dataset.tab; localStorage.setItem("sheetaet_dash", S.dashTab); renderDashboard(main); }));
     // компьютер — всегда год; телефон: «Сводка» — за месяц, «Таблица» — год по месяцам (стрелки листают колонки)
-    const mob = isMobile(), yearMode = !mob;
+    // «Сводка» — всегда за месяц (стрелки листают месяцы); «Таблица» — год (на телефоне — по месяцам стрелками)
+    const mob = isMobile(), yearMode = false;
     const prevKey = C.addMonths(S.month, -1);
     // факт и план: будущие месяцы — план. В текущем году сводка показывает факт (по текущий месяц) и прогноз на весь год,
     // сравнение — с тем же периодом прошлого года
@@ -1017,7 +1018,7 @@
     const prev = yearMode ? orgYearTotal(py, midYear ? py + todayKey.slice(4) : null, done) : C.orgMonth(S.projects, done, prevKey, S.org);
     const isPlan = yearMode ? y > todayKey.slice(0, 4) : S.month > todayKey;
     // компьютер: ‹ 2026 › — в шапке страницы, на одном уровне с «главная» и кнопками; телефон — закреплённая полоска сверху
-    if (!mob) { $("#page-tools").insertAdjacentHTML("beforeend", `<div class="pt-period">${monthBar("year")}</div>`); wireMonthBar($("#page-tools .pt-period")); }
+    if (!mob) { $("#page-tools").insertAdjacentHTML("beforeend", `<div class="pt-period">${monthBar(S.dashTab === "table" ? "year" : "month")}</div>`); wireMonthBar($("#page-tools .pt-period")); }
     main.innerHTML = `<div class="pane pane--money scroll sh-pane">${mob ? periodHead(S.dashTab === "table" ? "grid" : "summary") : ""}<div id="dash-body"></div></div>`;
     wireMonthBar(main);
     const body = $("#dash-body", main);

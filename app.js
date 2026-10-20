@@ -642,7 +642,7 @@
     const all = build(), keys = C.monthsOfYear(yearOf()), keep = S.entries;
     S.entries = keep.filter((e) => effStatus(e) === "done");
     let done; try { done = build(); } finally { S.entries = keep; }
-    const keyOf = (sec, r) => `${sec}|${r.label}|${r.cls || ""}|${r.pct ? "%" : ""}|${r.edit ? JSON.stringify({ ...r.edit, slot: undefined }) : ""}`;
+    const keyOf = (sec, r) => `${sec}|${r.open || ""}|${r.label}|${r.cls || ""}|${r.pct ? "%" : ""}|${r.edit ? JSON.stringify({ ...r.edit, slot: undefined }) : ""}`;   /* open — id проекта/человека: одинаковые названия не путаются */
     const idx = new Map(); let sec = "";
     done.forEach((r) => { if (r.sec) { sec = r.sec; return; } const k = keyOf(sec, r); if (!idx.has(k)) idx.set(k, r); });
     sec = "";
@@ -651,7 +651,17 @@
       const lists = cellLists(r, keys); if (!lists) return;
       if (r.cellIds) { r.st = lists.map((l) => cellSt(l)); return; }   // ячейка = одна запись: её сумма и её статус
       const d = idx.get(keyOf(sec, r));
-      r.st = lists.map((l) => (l.some((e) => effStatus(e) === "done") ? "done" : cellSt(l)));
+      // строка-платёж (её суммы правятся): есть «готово» → только оно; одни план/опоздания → их сумма своим цветом.
+      // расчётная строка (прибыль, налоги, итоги, выручка, маржа): если в месяце есть «готово» или «опоздание» —
+      // считается математически только по «готово», обычным цветом (опоздание из расчёта выпадает, прибыль может уйти в минус);
+      // если в месяце одни планы (прогноз) — теоретическая сумма серым
+      const computed = !r.edit;
+      r.st = lists.map((l) => {
+        const sts = l.map(effStatus);
+        if (sts.includes("done")) return "done";
+        if (computed && sts.includes("late")) return "done";
+        return cellSt(l);
+      });
       r.values = r.values.map((v, i) => (r.st[i] === "done" ? (d ? d.values[i] : 0) : v));
       if (!r.pct) r.total = r.values.reduce((s2, v) => s2 + (v || 0), 0);
     });

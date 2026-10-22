@@ -1010,7 +1010,7 @@
     const rows = [];
     rows.push({ sec: "income", label: "поступления" }); projs.forEach((p) => rows.push(r(pl(p), (byId[p.id] || {}).income || 0))); rows.push(r("выручка до налогов", o.income, "is-sum"));
     rows.push({ sec: "tax", label: "налоги" }); rows.push(r(`налоги · ${taxPct()} от выручки`, o.tax, "is-sum"));
-    rows.push({ sec: "salary", label: "зарплаты" }); listPeople(per).forEach((e) => rows.push(r(esc(C.fullName(e) || "без имени"), C.employeeMonth(e.id, S.entries, S.month).total))); rows.push(r("зарплаты всего", o.salaries, "is-sum"));
+    rows.push({ sec: "salary", label: "зарплаты" }); listPeople(per).forEach((e) => rows.push(r(esc(C.fullName(e) || "без имени"), C.employeeMonth(e.id, S.entries, S.month).total))); rows.push(r("Комиссия за выплаты", o.fees)); rows.push(r("зарплаты всего", o.salaries + o.fees, "is-sum"));
     rows.push({ sec: "expense", label: "прочие расходы проектов" }); projs.forEach((p) => rows.push(r(pl(p), (byId[p.id] || {}).other || 0))); rows.push(r("итого", o.projOther, "is-sum"));
     rows.push({ sec: "profit", label: "прибыль по проектам" }); projs.forEach((p) => rows.push(r(pl(p), (byId[p.id] || {}).profit || 0))); rows.push(r("итого по проектам", o.projectsProfit, "is-sum"));
     rows.push({ sec: "fixed", label: "постоянные расходы" }); fixedTitles().forEach((t) => rows.push(r(esc(t), sumBy(fx.filter((e) => (e.title || "расход").trim() === t))))); rows.push(r("итого", o.fixed, "is-sum"));
@@ -1077,7 +1077,7 @@
   function orgYearTotal(year, upto, entries) {
     const keys0 = C.monthsOfYear(year);
     const ms = C.orgYear(S.projects, entries || S.entries, year, S.org).filter((_, i) => !upto || keys0[i] <= upto);
-    const keys = ["income", "salaries", "tax", "projOther", "fixed", "other", "expense", "profit", "projectsProfit"];
+    const keys = ["income", "salaries", "fees", "tax", "projOther", "fixed", "other", "expense", "profit", "projectsProfit"];
     const out = {}; keys.forEach((k) => (out[k] = ms.reduce((s, m) => s + m[k], 0)));
     out.per = S.projects.map((p) => { const x = { project: p, income: 0, profit: 0, other: 0, salaries: 0, tax: 0, total: 0 }; ms.forEach((m) => { const y = m.per.find((z) => z.project.id === p.id); if (y) ["income", "profit", "other", "salaries", "tax", "total"].forEach((k) => (x[k] += y[k])); }); return x; });
     return out;
@@ -1114,7 +1114,7 @@
     const prevName = yearMode ? py + (midYear ? " (янв–" + C.MONTHS_SHORT[+todayKey.slice(5) - 1] + ")" : " году") : C.monthPrep(prevKey);
     const tiles = [
       ["прибыль всего", cur.profit, prev.profit, "up-good", "profit", "profit"], ["доход всего", cur.income, prev.income, "up-good", "income", "income"],
-      ["расход всего", cur.expense, prev.expense, "up-bad", "expense", "expense"], ["зарплаты", cur.salaries, prev.salaries, "up-bad", "salary", "salaries"],
+      ["расход всего", cur.expense, prev.expense, "up-bad", "expense", "expense"], ["зарплаты", cur.salaries + cur.fees, prev.salaries + prev.fees, "up-bad", "salary", "salaries"],
       ["налоги", cur.tax, prev.tax, "up-bad", "tax", "tax"], ["прочие расходы", cur.other, prev.other, "up-bad", "expense", "other"],
     ];
     const per = periodOf(yearMode ? "year" : "month"), shown = new Set(listProjects(per).map((p) => p.id));
@@ -1123,11 +1123,11 @@
       <div class="kpi-grid">${tiles.map(([label, v, pv, kind, k, fk]) => { const cmp = C.compare(v, pv, kind); const tri = cmp.dir === "up" ? "▲" : cmp.dir === "down" ? "▼" : "▶"; return `<button class="kpi" data-tab-go="table">
         <span class="kpi-num ${v < 0 ? "is-neg" : ""}">${fm(v)}</span>
         <span class="kpi-label"><span class="k-dot" style="--c:${K[k]}"></span>${label}${forecast ? " · факт" : ""}</span>
-        ${forecast ? `<span class="kpi-forecast">с планом ${fmt(forecast[fk])}</span>` : ""}
+        ${forecast ? `<span class="kpi-forecast">с планом ${fmt(fk === "salaries" ? forecast.salaries + forecast.fees : forecast[fk])}</span>` : ""}
         <span class="kpi-prev"><span><span class="kpi-tri kpi-tri--${cmp.tone}">${tri}</span>${cmp.isNew ? "новое" : cmp.change != null ? (cmp.change > 0 ? "+" : "") + cmp.change + "%" : ""}</span><span>в ${prevName} ${fmt(pv)}</span></span></button>`; }).join("")}</div>
       <div class="ch-block"><div class="ch-title">чистая прибыль по проектам</div>${CH.bars(cur.per.filter((x) => shown.has(x.project.id) && (x.project.status !== "done" || x.income || x.total)).sort((a, b) => b.profit - a.profit).map((x) => ({ label: x.project.name, value: x.profit, c: K.profit })))}</div>
       <div class="ch-stack">
-        <div class="ch-block"><div class="ch-title">структура расходов</div>${CH.donut([{ label: "зарплаты", value: cur.salaries, c: K.salary }, { label: "налоги", value: cur.tax, c: K.tax }, { label: "прочие расходы проектов", value: cur.projOther, c: K.expense }, { label: "постоянные расходы", value: cur.fixed, c: K.fixed }], { label: "расход всего", value: cur.expense })}</div>
+        <div class="ch-block"><div class="ch-title">структура расходов</div>${CH.donut([{ label: "зарплаты", value: cur.salaries + cur.fees, c: K.salary }, { label: "налоги", value: cur.tax, c: K.tax }, { label: "прочие расходы проектов", value: cur.projOther, c: K.expense }, { label: "постоянные расходы", value: cur.fixed, c: K.fixed }], { label: "расход всего", value: cur.expense })}</div>
         <div class="ch-block"><div class="ch-title">доход по проектам</div>${CH.donut(cur.per.map((x) => ({ label: x.project.name, value: x.income, c: x.project.color || PALETTE[2] })), { label: "доход всего", value: cur.income })}</div>
       </div>`;
     $$("[data-tab-go]", body).forEach((b) => (b.onclick = () => { S.dashTab = "table"; localStorage.setItem("sheetaet_dash", "table"); renderDashboard(main); }));
@@ -1167,7 +1167,8 @@
     rows.push({ sec: "tax", label: "налоги" }); rows.push(yRow(`налоги · ${taxPct()} от выручки`, sumOrg("tax"), { cls: "is-sum", of: inc }));
     rows.push({ sec: "salary", label: "зарплаты", add: { kind: "new-person" } });
     listPeople(per).forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => C.employeeMonth(e.id, S.entries, k).total), { open: e.id, page: "team", of: (x) => sal(x) && x.employee_id === e.id, edit: { kind: "salary", employee_id: e.id, agg: true } })));
-    rows.push(yRow("зарплаты всего", sumOrg("salaries"), { cls: "is-sum", of: sal }));
+    rows.push(yRow("Комиссия за выплаты", sumOrg("fees"), { of: sal }));   /* 2% от каждой выплаты, но не меньше 900 ₽ — всегда последней строкой */
+    rows.push(yRow("зарплаты всего", org.map((m) => m.salaries + m.fees), { cls: "is-sum", of: sal }));
     rows.push({ sec: "expense", label: "прочие расходы проектов", add: { kind: "project-expense" } }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "other"), { ...open(p), of: (e) => exp(e) && e.project_id === p.id, edit: { kind: "expense", project_id: p.id, agg: true } })));
     rows.push(yRow("итого", sumOrg("projOther"), { cls: "is-sum", of: exp }));
     rows.push({ sec: "profit", label: "прибыль по проектам" }); projs.forEach((p) => rows.push(yRow(pl(p), pv(p, "profit"), { ...open(p), of: (e) => e.project_id === p.id })));
@@ -1393,7 +1394,8 @@
     const people = new Set([...membersOf(p.id), ...sal.map((e) => e.employee_id).filter(Boolean)]);
     [...people].map(empById).filter((e) => e && (e.active !== false || sal.some((x) => x.employee_id === e.id))).sort(byName)
       .forEach((e) => rows.push(yRow(esc(C.fullName(e) || "без имени"), ms.map((k) => sumBy(sal.filter((x) => x.employee_id === e.id && C.inMonth(x.date, k)))), { open: e.id, page: "team", edit: { kind: "salary", project_id: p.id, employee_id: e.id }, of: (x) => x.kind === "salary" && x.project_id === p.id && x.employee_id === e.id })));
-    rows.push(yRow("итого зарплаты", ym.map((m) => m.salaries), { cls: "is-sum", of: ofP("salary") }));
+    rows.push(yRow("Комиссия за выплаты", ym.map((m) => m.fees), { of: ofP("salary") }));
+    rows.push(yRow("итого зарплаты", ym.map((m) => m.salaries + m.fees), { cls: "is-sum", of: ofP("salary") }));
     rows.push({ sec: "expense", label: "расход", add: { kind: "expense", pid: p.id } });
     const exp = ent.filter((e) => e.kind === "expense");
     [...new Set([...exp.map((e) => (e.title || "расход").trim()), ...extraTitles("exp:" + p.id)])].sort((a, b) => a.localeCompare(b, "ru"))
@@ -1605,7 +1607,8 @@
       if (sal.some((x) => !x.project_id) || S.extra["free:" + e.id] || !pids.length)
       rows.push(yRow("без проекта", ms.map((k) => sumBy(sal.filter((x) => !x.project_id && C.inMonth(x.date, k)))), { edit: { kind: "salary", project_id: null, employee_id: e.id }, of: (x) => x.kind === "salary" && x.employee_id === e.id && !x.project_id }));
       pids.forEach((p) => rows.push(yRow(pl(p), ms.map((k) => sumBy(sal.filter((x) => x.project_id === p.id && C.inMonth(x.date, k)))), { open: p.id, page: "projects", edit: { kind: "salary", project_id: p.id, employee_id: e.id }, of: (x) => x.kind === "salary" && x.employee_id === e.id && x.project_id === p.id })));
-      rows.push(yRow("итого", ms.map((k) => sumBy(sal.filter((x) => C.inMonth(x.date, k)))), { cls: "is-sum", of: (x) => x.kind === "salary" && x.employee_id === e.id }));
+      rows.push(yRow("Комиссия за выплаты", ms.map((k) => C.feesOf(sal.filter((x) => C.inMonth(x.date, k)))), { of: (x) => x.kind === "salary" && x.employee_id === e.id }));
+      rows.push(yRow("итого", ms.map((k) => { const l = sal.filter((x) => C.inMonth(x.date, k)); return sumBy(l) + C.feesOf(l); }), { cls: "is-sum", of: (x) => x.kind === "salary" && x.employee_id === e.id }));
         return rows;
       };
       box.innerHTML = yearGrid(statusRows(build)); wireYearGrid(box, "employee", () => renderEmployeeBody(e, true)); return;

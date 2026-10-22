@@ -73,18 +73,23 @@
   // ставка налога — из настроек организации (меняется в карточке организации), по умолчанию 7%
   const taxRateOf = (org) => { const n = org && org.tax_rate != null ? Number(org.tax_rate) : TAX_RATE; return Number.isFinite(n) ? n : TAX_RATE; };
   const sum = (list) => list.reduce((s, e) => s + e.amount_minor, 0);
+  // комиссия банка за выплату человеку: 2% от суммы, но не меньше 900 ₽ — с каждой выплаты отдельно
+  const FEE_RATE = 2, FEE_MIN = 90000;
+  const payoutFee = (minor) => (minor > 0 ? Math.max(Math.round((minor * FEE_RATE) / 100), FEE_MIN) : 0);
+  const feesOf = (list) => list.filter((e) => e.kind === "salary").reduce((s, e) => s + payoutFee(e.amount_minor), 0);
   function projectMonth(project, entries, key, org) {
     const mine = entries.filter((e) => e.project_id === project.id && inMonth(e.date, key));
     const D = sum(mine.filter((e) => e.kind === "income"));
     const S = sum(mine.filter((e) => e.kind === "salary"));
+    const F = feesOf(mine);   // комиссия за выплаты — расход проекта
     const O = sum(mine.filter((e) => e.kind === "expense"));
     const taxRate = taxRateOf(org);
     const T = Math.round((D * taxRate) / 100);
-    const total = S + O + T;
+    const total = S + F + O + T;
     const profit = D - total;
     const rate = project.profit_rate != null ? Number(project.profit_rate) : (org && org.profit_rate != null ? Number(org.profit_rate) : DEFAULT_PROFIT_RATE);
     const target = Math.round(((D - T) * rate) / 100);
-    return { income: D, salaries: S, other: O, tax: T, taxRate, total, profit, margin: pct(profit, D), rate, target, vsTarget: profit - target };
+    return { income: D, salaries: S, fees: F, other: O, tax: T, taxRate, total, profit, margin: pct(profit, D), rate, target, vsTarget: profit - target };
   }
   // Организация за месяц: суммы по проектам + постоянные расходы
   function orgMonth(projects, entries, key, org) {
@@ -94,11 +99,12 @@
     // зарплата без проекта (просто человеку) — в зарплатах и расходах организации, но не в прибыли проектов
     const looseSalaries = sum(entries.filter((e) => e.kind === "salary" && !e.project_id && inMonth(e.date, key)));
     const salaries = per.reduce((s, x) => s + x.salaries, 0) + looseSalaries;
+    const fees = per.reduce((s, x) => s + x.fees, 0) + feesOf(entries.filter((e) => e.kind === "salary" && !e.project_id && inMonth(e.date, key)));
     const tax = per.reduce((s, x) => s + x.tax, 0);
     const projOther = per.reduce((s, x) => s + x.other, 0);
     const other = projOther + fixed;
-    const expense = salaries + tax + other;
-    return { per, income, salaries, looseSalaries, tax, projOther, fixed, other, expense, profit: income - expense, projectsProfit: per.reduce((s, x) => s + x.profit, 0) };
+    const expense = salaries + fees + tax + other;
+    return { per, income, salaries, fees, looseSalaries, tax, projOther, fixed, other, expense, profit: income - expense, projectsProfit: per.reduce((s, x) => s + x.profit, 0) };
   }
   // Зарплата сотрудника за месяц = Σ его выплат во всех проектах
   function employeeMonth(employeeId, entries, key) {
@@ -141,7 +147,7 @@
   const fullName = (e) => [e.first_name, e.last_name].filter(Boolean).join(" ").trim();
 
   const api = {
-    TAX_RATE, DEFAULT_PROFIT_RATE, taxRateOf, NNBSP, NBSP, MINUS,
+    TAX_RATE, DEFAULT_PROFIT_RATE, taxRateOf, payoutFee, feesOf, NNBSP, NBSP, MINUS,
     parseAmount, formatMoney, formatMoneyHTML, amountToInput, pct,
     daysInMonth, monthKey, monthStart, addMonths, inMonth, dayInMonth, todayStr,
     MONTHS, MONTHS_GEN, MONTHS_SHORT, monthLabel, monthPrep, dayLabel, dayLong, plural,

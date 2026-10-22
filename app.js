@@ -752,7 +752,14 @@
     // строка со значениями, которые можно править: нажатие на сумму меняет сумму, на название — открывает карточку
     $$(".yt tr[data-open]", root).forEach((tr) => (tr.onclick = (e) => { if (justDragged()) return; const td = e.target.closest("td"); if (td && td._longPress && Date.now() - td._longPress < 800) return; if (tr.dataset.edit && !e.target.closest(".yt-l")) return; go(tr.dataset.page, tr.dataset.open); }));
     // после правки таблица перерисовывается — прокрутку вбок сохраняем, чтобы не прыгать к январю
-    const redraw = () => { const w = $(".yt-wrap", root), sl = w ? w.scrollLeft : 0; (rerender || (() => render()))(); const w2 = $(".yt-wrap", root), h2 = $(".yt-head", root); if (w2) w2.scrollLeft = sl; if (h2 && w2) h2.scrollLeft = w2.scrollLeft; };
+    // после правки таблица перерисовывается — сохраняем и прокрутку вбок, и положение страницы по высоте (страница не прыгает наверх)
+    const redraw = () => {
+      const sc = $("#main .scroll, #main .sh-pane"), top = sc ? sc.scrollTop : 0;
+      const w = $("#main .yt-wrap"), sl = w ? w.scrollLeft : 0;
+      (rerender || (() => render()))();
+      const sc2 = $("#main .scroll, #main .sh-pane"); if (sc2) sc2.scrollTop = top;
+      const w2 = $("#main .yt-wrap"), h2 = $("#main .yt-head"); if (w2) w2.scrollLeft = sl; if (h2 && w2) h2.scrollLeft = w2.scrollLeft;
+    };
     $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => (justDragged() || (td._longPress && Date.now() - td._longPress < 800)) ? null : editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, redraw, td)));
     wireFold(root);
     wireMonthNav(root);
@@ -768,7 +775,7 @@
         // переименование прямо в строке: курсор в поле, Enter или клик мимо — сохранить, Esc — отмена
         td.classList.add("is-editing");
         td.innerHTML = `<input class="yt-input yt-input--name" value="${esc(spec.title)}" maxlength="120" />`;
-        const inp = $("input", td); inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length);
+        const inp = $("input", td); inp.focus({ preventScroll: true }); inp.setSelectionRange(inp.value.length, inp.value.length);
         let done = false;
         const fin = (save) => { if (done) return; done = true; if (save && inp.value.trim() && inp.value.trim() !== spec.title) renameLine(spec, redraw, ids, inp.value.trim()); else redraw(); };
         inp.onkeydown = (ev) => { if (ev.key === "Enter") { ev.preventDefault(); fin(true); } else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); fin(false); } };
@@ -911,7 +918,7 @@
     const cur = list[0], p = projById(spec.project_id), emp = spec.employee_id ? empById(spec.employee_id) : null;
     td.classList.add("is-editing");
     td.innerHTML = `<input class="yt-input" inputmode="decimal" value="${list.length ? esc(C.amountToInput(sumBy(list))) : ""}" />`;
-    const inp = $("input", td); inp.focus(); inp.select();
+    const inp = $("input", td); inp.focus({ preventScroll: true }); inp.select();   // фокус без прокрутки страницы
     let done = false;
     const finish = async (save) => {
       if (done) return; done = true;

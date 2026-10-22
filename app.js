@@ -689,28 +689,31 @@
     }
     return rows;
   }
+  let dragEndAt = 0;
+  const justDragged = () => Date.now() - dragEndAt < 450;   // клик сразу после перетаскивания — не открывать карточку и не править ячейку
   function wireRowDrag(root, redraw) {
     $$(".yt [data-grip]", root).forEach((g) => g.addEventListener("click", (e) => e.stopPropagation()));   /* клик по ручке не открывает карточку и не начинает правку */
     $$(".yt [data-grip]", root).forEach((g) => g.addEventListener("pointerdown", (e) => {
       e.preventDefault(); e.stopPropagation();
       const tr = g.closest("tr"), tbody = tr.parentElement, sk = tr.dataset.sk;
       const sib = () => $$(`tr[data-sk="${sk}"][data-rid]`, tbody);
-      tr.classList.add("is-dragging"); try { g.setPointerCapture(e.pointerId); } catch (er) {}
+      // движение и отпускание слушаем на всей странице: строка переставляется в DOM, и захват указателя у ручки теряется
+      tr.classList.add("is-dragging"); document.body.classList.add("is-row-dragging");
       const move = (ev) => {
         const y = ev.clientY, others = sib().filter((x) => x !== tr);
         for (const o of others) { const r = o.getBoundingClientRect(); if (y < r.top + r.height / 2) { if (o.previousElementSibling !== tr) tbody.insertBefore(tr, o); return; } }
         const last = others[others.length - 1]; if (last && last.nextElementSibling !== tr) last.after(tr);
       };
       const up = async () => {
-        g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up);
-        tr.classList.remove("is-dragging");
+        document.removeEventListener("pointermove", move); document.removeEventListener("pointerup", up); document.removeEventListener("pointercancel", up);
+        tr.classList.remove("is-dragging"); document.body.classList.remove("is-row-dragging"); dragEndAt = Date.now();
         const ids = sib().map((x) => x.dataset.rid), key = orderKey(sk), prev = ((S.org.row_order || {})[key] || []).slice();
         if (ids.join() === prev.join()) return;
         await safe(() => DB.updateOrg({ row_order: { ...(S.org.row_order || {}), [key]: ids } }));
         pushUndo("порядок строк", () => DB.updateOrg({ row_order: { ...(S.org.row_order || {}), [key]: prev } }));
         redraw();
       };
-      g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
+      document.addEventListener("pointermove", move); document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
     }));
   }
 
@@ -747,10 +750,10 @@
   function wireYearGrid(root, place, rerender) {
     $$(".yt [data-month]", root).forEach((th) => (th.onclick = () => { localStorage.setItem("sheetaet_view_" + place, "month"); setMonth(th.dataset.month); }));
     // строка со значениями, которые можно править: нажатие на сумму меняет сумму, на название — открывает карточку
-    $$(".yt tr[data-open]", root).forEach((tr) => (tr.onclick = (e) => { const td = e.target.closest("td"); if (td && td._longPress && Date.now() - td._longPress < 800) return; if (tr.dataset.edit && !e.target.closest(".yt-l")) return; go(tr.dataset.page, tr.dataset.open); }));
+    $$(".yt tr[data-open]", root).forEach((tr) => (tr.onclick = (e) => { if (justDragged()) return; const td = e.target.closest("td"); if (td && td._longPress && Date.now() - td._longPress < 800) return; if (tr.dataset.edit && !e.target.closest(".yt-l")) return; go(tr.dataset.page, tr.dataset.open); }));
     // после правки таблица перерисовывается — прокрутку вбок сохраняем, чтобы не прыгать к январю
     const redraw = () => { const w = $(".yt-wrap", root), sl = w ? w.scrollLeft : 0; (rerender || (() => render()))(); const w2 = $(".yt-wrap", root), h2 = $(".yt-head", root); if (w2) w2.scrollLeft = sl; if (h2 && w2) h2.scrollLeft = w2.scrollLeft; };
-    $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => (td._longPress && Date.now() - td._longPress < 800) ? null : editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, redraw, td)));
+    $$(".yt tr[data-edit] td[data-mk]", root).forEach((td) => (td.onclick = () => (justDragged() || (td._longPress && Date.now() - td._longPress < 800)) ? null : editYearCell(JSON.parse(td.parentElement.dataset.edit), td.dataset.mk, redraw, td)));
     wireFold(root);
     wireMonthNav(root);
     wireStatusMenu(root, redraw);

@@ -823,3 +823,4 @@ input:focus-visible, textarea:focus-visible, select:focus-visible, [contentedita
 @media (hover:none){ .row-grip{ opacity:.45; } }
 .yt tr.is-dragging td{ background:var(--hl, rgba(128,128,128,.12)) !important; }
 .yt tr.is-dragging .row-grip{ opacity:1; }
+body.is-row-dragging, body.is-row-dragging *{ cursor:grabbing !important; user-select:none !important; }

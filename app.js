@@ -665,7 +665,53 @@
       r.values = r.values.map((v, i) => (r.st[i] === "done" ? (d ? d.values[i] : 0) : v));
       if (!r.pct) r.total = r.values.reduce((s2, v) => s2 + (v || 0), 0);
     });
-    return all;
+    return applyRowOrder(all);
+  }
+  /* ---------- свой порядок строк внутри раздела (перетаскивание за «⋮⋮») ----------
+     Двигаются только строки-сущности (проект, человек, поступление, расход); итоги и расчётные строки стоят на месте.
+     Порядок хранится в orgs.row_order по ключу «страница:id:раздел» — одинаковый на всех устройствах. На суммы не влияет. */
+  const rowId = (r) => (r.sec ? null : r.open ? "o:" + r.open : r.edit ? "e:" + [r.edit.kind, r.edit.project_id || "", r.edit.employee_id || "", r.edit.title || "", r.edit.slot ?? ""].join("|") : null);
+  const orderKey = (sec) => `${S.page || "dash"}:${S.id || ""}:${sec}`;
+  function applyRowOrder(rows) {
+    const saved = (S.org && S.org.row_order) || {};
+    let i = 0;
+    while (i < rows.length) {
+      if (!rows[i].sec) { i++; continue; }
+      const sec = rows[i].sec, start = i + 1; let end = start;
+      while (end < rows.length && !rows[end].sec && rows[end].cls !== "yt-total") end++;
+      const ord = saved[orderKey(sec)] || [];
+      const slots = [], items = [];
+      for (let k = start; k < end; k++) if (rowId(rows[k])) { slots.push(k); items.push(rows[k]); }
+      const rank = (r, n) => { const x = ord.indexOf(rowId(r)); return x < 0 ? 1e6 + n : x; };
+      const sorted = items.map((r, n) => [rank(r, n), r]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+      slots.forEach((k, n) => (rows[k] = sorted[n]));
+      i = end;
+    }
+    return rows;
+  }
+  function wireRowDrag(root, redraw) {
+    $$(".yt [data-grip]", root).forEach((g) => g.addEventListener("click", (e) => e.stopPropagation()));   /* клик по ручке не открывает карточку и не начинает правку */
+    $$(".yt [data-grip]", root).forEach((g) => g.addEventListener("pointerdown", (e) => {
+      e.preventDefault(); e.stopPropagation();
+      const tr = g.closest("tr"), tbody = tr.parentElement, sk = tr.dataset.sk;
+      const sib = () => $$(`tr[data-sk="${sk}"][data-rid]`, tbody);
+      tr.classList.add("is-dragging"); try { g.setPointerCapture(e.pointerId); } catch (er) {}
+      const move = (ev) => {
+        const y = ev.clientY, others = sib().filter((x) => x !== tr);
+        for (const o of others) { const r = o.getBoundingClientRect(); if (y < r.top + r.height / 2) { if (o.previousElementSibling !== tr) tbody.insertBefore(tr, o); return; } }
+        const last = others[others.length - 1]; if (last && last.nextElementSibling !== tr) last.after(tr);
+      };
+      const up = async () => {
+        g.removeEventListener("pointermove", move); g.removeEventListener("pointerup", up); g.removeEventListener("pointercancel", up);
+        tr.classList.remove("is-dragging");
+        const ids = sib().map((x) => x.dataset.rid), key = orderKey(sk), prev = ((S.org.row_order || {})[key] || []).slice();
+        if (ids.join() === prev.join()) return;
+        await safe(() => DB.updateOrg({ row_order: { ...(S.org.row_order || {}), [key]: ids } }));
+        pushUndo("порядок строк", () => DB.updateOrg({ row_order: { ...(S.org.row_order || {}), [key]: prev } }));
+        redraw();
+      };
+      g.addEventListener("pointermove", move); g.addEventListener("pointerup", up); g.addEventListener("pointercancel", up);
+    }));
   }
 
   /* ---------- годовая таблица: 12 одинаковых колонок (без суммы за год) ---------- */
@@ -691,7 +737,10 @@
       const stc = (i) => { const st = r.st ? r.st[i] : lists ? cellSt(lists[i]) : null; return st ? ` st-${st}` : ""; };
       const ida = (i) => (lists && lists[i].length ? ` data-ids="${lists[i].map((e) => e.id).join(",")}"` : "");
       const delBtn = r.edit && !r.edit.agg ? `<button class="row-del" data-row-del aria-label="Удалить строку" title="удалить строку">${TRASH}</button>` : "";
-      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}${delBtn}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${curD(i)}${stc(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}${r.cellIds && r.cellIds[i] ? ` data-eid="${r.cellIds[i]}"` : ""}${ida(i)}>${cell(r, v)}</td>`).join("")}</tr>`;
+      const rid = inSec ? rowId(r) : null;
+      const grip = rid ? `<span class="row-grip${delBtn ? "" : " is-solo"}" data-grip title="перетащить" aria-label="Перетащить строку">⋮⋮</span>` : "";
+      const dnd = rid ? ` data-rid="${esc(rid)}" data-sk="${inSec}"` : "";
+      return `<tr class="${r.cls || ""}${r.edit ? " is-edit" : ""}${fold.includes("data-folded") ? " is-folded-row" : ""}"${fold}${dnd} ${r.open ? `data-open="${r.open}" data-page="${r.page}"` : ""}${ed}><td class="yt-l" title="${esc(String(r.label).replace(/<[^>]+>/g, "").trim())}">${r.label}${grip}${delBtn}</td>${r.values.map((v, i) => `<td class="${neg(r, v).trim()}${curD(i)}${stc(i)}"${r.edit ? ` data-mk="${keys[i]}"` : ""}${r.cellIds && r.cellIds[i] ? ` data-eid="${r.cellIds[i]}"` : ""}${ida(i)}>${cell(r, v)}</td>`).join("")}</tr>`;
     }).join("");
     return `<div class="yt-block"><div class="yt-head"><table class="yt yt--head">${cols}${head}</table></div><div class="yt-wrap"><table class="yt">${cols}<tbody>${body}</tbody></table></div></div>`;
   }
@@ -705,6 +754,7 @@
     wireFold(root);
     wireMonthNav(root);
     wireStatusMenu(root, redraw);
+    wireRowDrag(root, redraw);
     $$(".yt tr[data-edit] td.yt-l", root).forEach((td) => {
       const spec = JSON.parse(td.parentElement.dataset.edit);
       if (!spec.title) return;
@@ -724,7 +774,8 @@
     });
     $$("[data-row-del]", root).forEach((b) => (b.onclick = (e) => {
       e.stopPropagation(); const tr = b.closest("tr");
-      deleteLine(JSON.parse(tr.dataset.edit), tr.querySelector(".yt-l").getAttribute("title") || "", redraw);
+      const spec = JSON.parse(tr.dataset.edit), cell = tr.querySelector(".yt-l");
+      deleteLine(spec, spec.title || [...cell.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim() || cell.textContent.replace("⋮⋮", "").trim(), redraw);
     }));
     $$("[data-secadd]", root).forEach((b) => (b.onclick = (e) => { e.stopPropagation(); yearAdd(JSON.parse(b.dataset.secadd), root, redraw); }));
     $$(".yt-block", root).forEach((b) => {
